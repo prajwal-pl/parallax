@@ -1,0 +1,5 @@
+- agent consists of tools, state and a task
+- when the task is sent via an input, it loops with the llm, state and constantly reviews the status and feedback
+- only when the llm decides that the result is satisfactory, the agent returns that output
+- agent accepts tools, model, agent is a class which constructor can input model and tools which the agent can use
+- 
