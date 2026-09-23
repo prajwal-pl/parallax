@@ -44,11 +44,13 @@ def extract_schema(func: Callable) -> dict:
 
     return {
         "type": "function",
-        "name": func.__name__,
-        "description": func.__doc__,
-        "parameters": {
-            "type": "object",
-            "properties": parameters,
-            "required": required
+        "function": {
+            "name": func.__name__,
+            "description": func.__doc__,
+            "parameters": {
+                "type": "object",
+                "properties": parameters,
+                "required": required
+            }
         }
     }

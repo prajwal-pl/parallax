@@ -1,5 +1,5 @@
 import json
-from tool import openrouter, extract_schema
+from core.tool import openrouter, extract_schema
 
 def call_llm(model:str, messages:list, tools:list):
     """
@@ -12,7 +12,6 @@ def call_llm(model:str, messages:list, tools:list):
         tool_choice="auto")
 
     response = chat.choices[0].message
-    print(response)
     return response
 
 class Agent:
@@ -45,10 +44,7 @@ class Agent:
                 tools=self.tool_registry)
 
             if response.tool_calls:
-                self.messages.append({
-                    "role": "assistant",
-                    "content":response.content
-                })
+                self.messages.append(response)
 
                 for tool_call in response.tool_calls:
                     name = tool_call.function.name
@@ -66,8 +62,5 @@ class Agent:
                 continue
 
             else:
-                self.messages.append({
-                    "role": "assistant",
-                    "content": response.content
-                })
+                self.messages.append(response)
                 return response.content
