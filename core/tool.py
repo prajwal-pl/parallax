@@ -5,7 +5,6 @@ load_dotenv()
 import inspect
 from openrouter import OpenRouter
 from collections.abc import Callable
-import os
 
 def tool(func):
     """
@@ -14,7 +13,7 @@ def tool(func):
     func.is_tool = True
     return func
 
-openrouter = OpenRouter(api_key=os.getenv("OPENROUTER_API_KEY"))
+# openrouter = OpenRouter(api_key=os.getenv("OPENROUTER_API_KEY"))
 
 def extract_schema(func: Callable) -> dict:
     parameters = {}

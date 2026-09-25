@@ -26,12 +26,11 @@ def calculate(exp:str):
     return str(eval(exp))
 
 def main():
-    agent = Agent(model="inclusionai/ling-3.0-flash-vl:free", system_prompt="You are an assistant which uses tools whenever neccessary to solve a given task")
+    agent = Agent(model="cohere/north-mini-code:free", system_prompt="You are an assistant which uses tools whenever neccessary to solve a given task")
 
     agent.add_tool(calculate)
-    agent.add_tool(web_search)
 
-    response = agent.run("What are the latest developments in AI as of September 2026?")
+    response = agent.run("What is 225498 * 465422 + 13231688")
 
     print(f"Result: {response}")
     
