@@ -3,7 +3,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import inspect
-from openrouter import OpenRouter
 from collections.abc import Callable
 
 def tool(func):
