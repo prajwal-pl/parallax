@@ -1,6 +1,7 @@
 import json
 from core.tool import extract_schema
 from core.llm import call_llm
+from core.types import Message
 
 class Agent:
 
@@ -9,7 +10,12 @@ class Agent:
         self.system_prompt = system_prompt
         self.tool_registry = {}
         self.tool_schemas = []
-        self.messages = []
+        self.messages = [
+            {
+                "role": "system",
+                "content": self.system_prompt
+            }
+        ]
 
     def add_tool(self, func):
         schema = extract_schema(func)
@@ -17,10 +23,6 @@ class Agent:
         self.tool_schemas.append(schema)
 
     def run(self, user_input: str):
-        self.messages.append({
-            "role": "system",
-            "content": self.system_prompt
-        })
         self.messages.append(
         {
             "role": "user",
@@ -32,7 +34,7 @@ class Agent:
                 tools=self.tool_schemas)
 
             if response.tool_calls:
-                self.messages.append(response)
+                self.messages.append(response.model_dump())
 
                 for tool_call in response.tool_calls:
                     name = tool_call.function.name
@@ -50,5 +52,5 @@ class Agent:
                 continue
 
             else:
-                self.messages.append(response)
+                self.messages.append(response.model_dump())
                 return response.content
