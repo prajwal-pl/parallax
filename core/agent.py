@@ -20,7 +20,7 @@ class Agent:
     def add_tool(self, func):
         schema = extract_schema(func)
         self.tool_registry[func.__name__] = func
-        self.tool_schemas.append(schema)
+        self.tool_schemas.append(schema.to_dict())
 
     def run(self, user_input: str):
         self.messages.append(

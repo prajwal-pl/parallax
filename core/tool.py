@@ -5,6 +5,8 @@ load_dotenv()
 import inspect
 from collections.abc import Callable
 
+from core.types import ToolSchema, ToolParameters, ToolFunction
+
 def tool(func):
     """
     decorator to mark a function as a tool
@@ -12,9 +14,7 @@ def tool(func):
     func.is_tool = True
     return func
 
-# openrouter = OpenRouter(api_key=os.getenv("OPENROUTER_API_KEY"))
-
-def extract_schema(func: Callable) -> dict:
+def extract_schema(func: Callable) -> ToolSchema:
     parameters = {}
     required = []
 
@@ -40,15 +40,15 @@ def extract_schema(func: Callable) -> dict:
         if param.default is inspect.Parameter.empty:
             required.append(param_name)
 
-    return {
-        "type": "function",
-        "function": {
-            "name": func.__name__,
-            "description": func.__doc__,
-            "parameters": {
-                "type": "object",
-                "properties": parameters,
-                "required": required
-            }
-        }
-    }
+    return ToolSchema(
+        type = "function",
+        function= ToolFunction(
+            name = func.__name__,
+            description = func.__doc__ or "",
+           parameters = ToolParameters(
+                type = "object",
+                properties = parameters,
+                required = required
+            )
+        )
+    )

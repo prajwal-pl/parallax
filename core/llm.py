@@ -1,4 +1,5 @@
 from openrouter import OpenRouter
+from openrouter.components import ChatAssistantMessage
 import os
 from dotenv import load_dotenv
 
@@ -6,7 +7,7 @@ load_dotenv()
 
 openrouter = OpenRouter(api_key=os.getenv("OPENROUTER_API_KEY"))
 
-def call_llm(model:str, messages:list, tools:list):
+def call_llm(model:str, messages:list, tools:list) -> ChatAssistantMessage:
     """
     Call the LLM with the given model, messages, and tools.
     """
