@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field, asdict
+import json
 
 @dataclass
 class Message:
@@ -13,11 +14,39 @@ class AgentEvent:
 
 @dataclass
 class AgentResult:
-    pass
+    content: str
+    iterations: int
+    messages: list[Message]
 
 @dataclass
 class ToolCall:
-    pass
+    id: str
+    name: str
+    arguments: dict
+
+@dataclass
+class LLMResponse:
+    content: str | None = None
+    tool_calls: list[ToolCall] | None = None
+
+    def to_message_dict(self) -> dict:
+        if self.tool_calls:
+            return {
+                "role": "assistant",
+                "content": self.content,
+                "tool_calls": [{
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.name,
+                        "arguments": json.dumps(tc.arguments)
+                    },
+                } for tc in self.tool_calls]
+            }
+        return {
+            "role": "assistant",
+            "content": self.content
+        }
 
 @dataclass
 class ToolParameters:

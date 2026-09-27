@@ -34,11 +34,11 @@ class Agent:
                 tools=self.tool_schemas)
 
             if response.tool_calls:
-                self.messages.append(response.model_dump())
+                self.messages.append(response.to_message_dict())
 
                 for tool_call in response.tool_calls:
-                    name = tool_call.function.name
-                    arguments = json.loads(tool_call.function.arguments)
+                    name = tool_call.name
+                    arguments = tool_call.arguments
 
                     func = self.tool_registry[name]
                     result = func(**arguments)
@@ -52,5 +52,5 @@ class Agent:
                 continue
 
             else:
-                self.messages.append(response.model_dump())
+                self.messages.append(response.to_message_dict())
                 return response.content
