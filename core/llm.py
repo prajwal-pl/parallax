@@ -14,8 +14,10 @@ def call_llm(model:str, messages:list, tools:list) -> LLMResponse:
     Call the LLM with the given model, messages, and tools.
     """
 
+    serialized = [m.to_dict() for m in messages]
+
     chat = openrouter.chat.send(model=model,
-        messages=messages,
+        messages=serialized,
         tools=tools,
         tool_choice="auto")
 

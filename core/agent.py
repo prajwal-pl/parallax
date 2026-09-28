@@ -1,7 +1,6 @@
-import json
 from core.tool import extract_schema
 from core.llm import call_llm
-from core.types import Message
+from core.types import AgentResult, Message
 
 class Agent:
 
@@ -11,10 +10,10 @@ class Agent:
         self.tool_registry = {}
         self.tool_schemas = []
         self.messages = [
-            {
-                "role": "system",
-                "content": self.system_prompt
-            }
+            Message(
+                role = "system",
+                content = self.system_prompt
+            )
         ]
 
     def add_tool(self, func):
@@ -22,19 +21,21 @@ class Agent:
         self.tool_registry[func.__name__] = func
         self.tool_schemas.append(schema.to_dict())
 
-    def run(self, user_input: str):
+    def run(self, user_input: str) -> AgentResult:
         self.messages.append(
-        {
-            "role": "user",
-            "content": user_input
-        })
+       Message(
+                role = "system",
+                content = user_input
+            ))
+        iterations = 0
         while True:
+            iterations += 1
             response = call_llm(model=self.model,
                 messages=self.messages,
                 tools=self.tool_schemas)
 
             if response.tool_calls:
-                self.messages.append(response.to_message_dict())
+                self.messages.append(response.to_message())
 
                 for tool_call in response.tool_calls:
                     name = tool_call.name
@@ -43,14 +44,18 @@ class Agent:
                     func = self.tool_registry[name]
                     result = func(**arguments)
 
-                    self.messages.append({
-                        "role": "tool",
-                        "content": str(result),
-                        "tool_call_id": tool_call.id
-                    })
+                    self.messages.append(Message(
+                        role = "tool",
+                        content = str(result),
+                        tool_call_id =  tool_call.id
+                    ))
 
                 continue
 
             else:
-                self.messages.append(response.to_message_dict())
-                return response.content
+                self.messages.append(response.to_message())
+                return AgentResult(
+                    content=response.content or "",
+                    iterations=iterations,
+                    messages=self.messages
+                )

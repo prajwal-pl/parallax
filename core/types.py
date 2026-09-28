@@ -1,3 +1,4 @@
+from __future__ import annotations
 from dataclasses import dataclass, field, asdict
 import json
 
@@ -6,7 +7,39 @@ class Message:
     role: str
     content: str
     tool_call_id: str | None = None
-    tool_calls: list | None = None
+    tool_calls: list[ToolCall] | None = None
+
+    def to_dict(self) -> dict:
+	# Tool result message (sent back after executing a tool)
+        if self.tool_call_id:
+                return {
+                    "role": self.role,
+                    "content": self.content,
+                    "tool_call_id": self.tool_call_id
+            }
+        # Assistant message that requested tool calls
+        if self.tool_calls:
+                tool_calls = self.tool_calls   # local var so Pylance can narrow
+                return {
+                    "role": self.role,
+                    "content": self.content,
+            "tool_calls": [
+                        {
+                    "id": tc.id,
+                    "type": "function",
+                "function": {
+                                "name": tc.name,
+                    "arguments": json.dumps(tc.arguments)
+                    }
+                        }
+                for tc in tool_calls
+                    ]
+            }
+        # Plain message (system, user, or final assistant response)
+        return {
+                "role": self.role,
+            "content": self.content
+            }
 
 @dataclass
 class AgentEvent:
@@ -28,6 +61,19 @@ class ToolCall:
 class LLMResponse:
     content: str | None = None
     tool_calls: list[ToolCall] | None = None
+
+    def to_message(self) -> Message:
+        if self.tool_calls:
+            return Message(
+                role = "assistant",
+                content = self.content or "",
+                tool_calls = self.tool_calls
+            )
+        else:
+            return Message(
+                role = "assistant",
+                content=self.content or "",
+            )
 
     def to_message_dict(self) -> dict:
         if self.tool_calls:
