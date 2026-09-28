@@ -24,7 +24,7 @@ class Agent:
     def run(self, user_input: str) -> AgentResult:
         self.messages.append(
        Message(
-                role = "system",
+                role = "user",
                 content = user_input
             ))
         iterations = 0
