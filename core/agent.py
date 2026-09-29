@@ -1,6 +1,7 @@
 from core.tool import extract_schema
 from core.llm import call_llm
 from core.types import AgentResult, Message
+from core.errors import MaxIterationsError, ToolExecutionError, ToolNotFoundError
 
 class Agent:
 
@@ -21,6 +22,8 @@ class Agent:
         self.tool_registry[func.__name__] = func
         self.tool_schemas.append(schema.to_dict())
 
+    MAX_ITERATIONS = 20
+
     def run(self, user_input: str) -> AgentResult:
         self.messages.append(
        Message(
@@ -30,6 +33,10 @@ class Agent:
         iterations = 0
         while True:
             iterations += 1
+
+            if iterations > self.MAX_ITERATIONS:
+                raise MaxIterationsError(f"Agent exceeded {self.MAX_ITERATIONS} without a final answer.")
+
             response = call_llm(model=self.model,
                 messages=self.messages,
                 tools=self.tool_schemas)
@@ -41,8 +48,15 @@ class Agent:
                     name = tool_call.name
                     arguments = tool_call.arguments
 
-                    func = self.tool_registry[name]
-                    result = func(**arguments)
+                    try:
+                        if name not in self.tool_registry:
+                            raise ToolNotFoundError(f"Tool {name} is not registered")
+                        func = self.tool_registry[name]
+                        result = func(**arguments)
+                    except ToolExecutionError as e:
+                        result = f"Tool Execution failed with error - e: {e}"
+                    except Exception as e:
+                        result = f"Something went wrong! Dispatch of tool {name} failed with error: {e}"
 
                     self.messages.append(Message(
                         role = "tool",
