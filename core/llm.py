@@ -9,14 +9,14 @@ load_dotenv()
 
 openrouter = OpenRouter(api_key=os.getenv("OPENROUTER_API_KEY"))
 
-def call_llm(model:str, messages:list, tools:list) -> LLMResponse:
+async def call_llm(model:str, messages:list, tools:list) -> LLMResponse:
     """
     Call the LLM with the given model, messages, and tools.
     """
 
     serialized = [m.to_dict() for m in messages]
 
-    chat = openrouter.chat.send(model=model,
+    chat = await openrouter.chat.send_async(model=model,
         messages=serialized,
         tools=tools,
         tool_choice="auto")

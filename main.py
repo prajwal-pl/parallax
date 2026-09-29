@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 from core.tool import tool
 from core.agent import Agent
+import asyncio
 import os
 
 from tavily import TavilyClient
@@ -25,15 +26,15 @@ def calculate(exp:str):
     """
     return str(eval(exp))
 
-def main():
+async def main():
     agent = Agent(model="cohere/north-mini-code:free", system_prompt="You are an assistant which uses tools whenever neccessary to solve a given task")
 
     agent.add_tool(calculate)
 
-    response = agent.run("What is 225498 * 465422 + 13231688")
+    response = await agent.run("What is 225498 * 465422 + 13231688")
 
     print(f"Result: {response}")
     
 
 if __name__ == "__main__":
-    main()  
+    asyncio.run(main())  

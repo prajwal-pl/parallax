@@ -2,6 +2,7 @@ from core.tool import extract_schema
 from core.llm import call_llm
 from core.types import AgentResult, Message
 from core.errors import MaxIterationsError, ToolExecutionError, ToolNotFoundError
+import asyncio
 
 class Agent:
 
@@ -24,7 +25,7 @@ class Agent:
 
     MAX_ITERATIONS = 20
 
-    def run(self, user_input: str) -> AgentResult:
+    async def run(self, user_input: str) -> AgentResult:
         self.messages.append(
        Message(
                 role = "user",
@@ -37,7 +38,7 @@ class Agent:
             if iterations > self.MAX_ITERATIONS:
                 raise MaxIterationsError(f"Agent exceeded {self.MAX_ITERATIONS} without a final answer.")
 
-            response = call_llm(model=self.model,
+            response = await call_llm(model=self.model,
                 messages=self.messages,
                 tools=self.tool_schemas)
 
@@ -52,9 +53,9 @@ class Agent:
                         if name not in self.tool_registry:
                             raise ToolNotFoundError(f"Tool {name} is not registered")
                         func = self.tool_registry[name]
-                        result = func(**arguments)
+                        result = await asyncio.to_thread(func, **arguments)
                     except ToolExecutionError as e:
-                        result = f"Tool Execution failed with error - e: {e}"
+                        result = f"Tool Execution failed with error: {e}"
                     except Exception as e:
                         result = f"Something went wrong! Dispatch of tool {name} failed with error: {e}"
 
