@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, asdict
 import json
 
+
 @dataclass
 class Message:
     role: str
@@ -10,40 +11,39 @@ class Message:
     tool_calls: list[ToolCall] | None = None
 
     def to_dict(self) -> dict:
-	# Tool result message (sent back after executing a tool)
+        # Tool result message (sent back after executing a tool)
         if self.tool_call_id:
-                return {
-                    "role": self.role,
-                    "content": self.content,
-                    "tool_call_id": self.tool_call_id
+            return {
+                "role": self.role,
+                "content": self.content,
+                "tool_call_id": self.tool_call_id,
             }
         # Assistant message that requested tool calls
         if self.tool_calls:
-                tool_calls = self.tool_calls   # local var so Pylance can narrow
-                return {
-                    "role": self.role,
-                    "content": self.content,
-            "tool_calls": [
-                        {
-                    "id": tc.id,
-                    "type": "function",
-                "function": {
-                                "name": tc.name,
-                    "arguments": json.dumps(tc.arguments)
+            tool_calls = self.tool_calls  # local var so Pylance can narrow
+            return {
+                "role": self.role,
+                "content": self.content,
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.name,
+                            "arguments": json.dumps(tc.arguments),
+                        },
                     }
-                        }
-                for tc in tool_calls
-                    ]
+                    for tc in tool_calls
+                ],
             }
         # Plain message (system, user, or final assistant response)
-        return {
-                "role": self.role,
-            "content": self.content
-            }
+        return {"role": self.role, "content": self.content}
+
 
 @dataclass
 class AgentEvent:
     pass
+
 
 @dataclass
 class AgentResult:
@@ -51,11 +51,13 @@ class AgentResult:
     iterations: int
     messages: list[Message]
 
+
 @dataclass
 class ToolCall:
     id: str
     name: str
     arguments: dict
+
 
 @dataclass
 class LLMResponse:
@@ -65,13 +67,11 @@ class LLMResponse:
     def to_message(self) -> Message:
         if self.tool_calls:
             return Message(
-                role = "assistant",
-                content = self.content or "",
-                tool_calls = self.tool_calls
+                role="assistant", content=self.content or "", tool_calls=self.tool_calls
             )
         else:
             return Message(
-                role = "assistant",
+                role="assistant",
                 content=self.content or "",
             )
 
@@ -80,19 +80,20 @@ class LLMResponse:
             return {
                 "role": "assistant",
                 "content": self.content,
-                "tool_calls": [{
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {
-                        "name": tc.name,
-                        "arguments": json.dumps(tc.arguments)
-                    },
-                } for tc in self.tool_calls]
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.name,
+                            "arguments": json.dumps(tc.arguments),
+                        },
+                    }
+                    for tc in self.tool_calls
+                ],
             }
-        return {
-            "role": "assistant",
-            "content": self.content
-        }
+        return {"role": "assistant", "content": self.content}
+
 
 @dataclass
 class ToolParameters:
@@ -100,11 +101,13 @@ class ToolParameters:
     properties: dict = field(default_factory=dict)
     required: list = field(default_factory=list)
 
+
 @dataclass
 class ToolFunction:
     name: str
     description: str
     parameters: ToolParameters = field(default_factory=ToolParameters)
+
 
 @dataclass
 class ToolSchema:
