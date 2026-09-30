@@ -53,7 +53,8 @@ class Agent:
                         if name not in self.tool_registry:
                             raise ToolNotFoundError(f"Tool {name} is not registered")
                         func = self.tool_registry[name]
-                        result = await asyncio.to_thread(func, **arguments)
+                        result = await asyncio.wait_for(
+                            asyncio.to_thread(func, **arguments), 30.0)
                     except ToolExecutionError as e:
                         result = f"Tool Execution failed with error: {e}"
                     except Exception as e:
