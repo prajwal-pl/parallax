@@ -1,3 +1,4 @@
+# import ast
 import json
 import os
 
@@ -9,6 +10,16 @@ from core.types import LLMResponse, ToolCall
 load_dotenv()
 
 openrouter = OpenRouter(api_key=os.getenv("OPENROUTER_API_KEY"))
+
+
+# def parse_arguments(raw: str) -> dict:
+#     try:
+#         return json.loads(raw)
+#     except json.JSONDecodeError:
+#         try:
+#             return ast.literal_eval(raw)
+#         except Exception:
+#             return {"raw": raw}
 
 
 async def call_llm(model: str, messages: list, tools: list) -> LLMResponse:
