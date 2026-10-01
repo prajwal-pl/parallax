@@ -30,7 +30,7 @@ class Agent:
             result = await asyncio.wait_for(asyncio.to_thread(func(**arguments)), 30.0)
         except ToolExecutionError as e:
             result = f"Tool Execution failed with error: {e}"
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             result = (
                 f"Something went wrong! Dispatch of tool {name} failed with error: {e}"
             )

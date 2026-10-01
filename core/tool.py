@@ -5,7 +5,8 @@ load_dotenv()
 import inspect
 from collections.abc import Callable
 
-from core.types import ToolSchema, ToolParameters, ToolFunction
+from core.types import ToolFunction, ToolParameters, ToolSchema
+
 
 def tool(func):
     """
@@ -13,6 +14,7 @@ def tool(func):
     """
     func.is_tool = True
     return func
+
 
 def extract_schema(func: Callable) -> ToolSchema:
     parameters = {}
@@ -34,21 +36,19 @@ def extract_schema(func: Callable) -> ToolSchema:
 
         parameters[param_name] = {
             "type": type_map.get(param_hints, "string"),
-            "description": param_name
+            "description": param_name,
         }
 
         if param.default is inspect.Parameter.empty:
             required.append(param_name)
 
     return ToolSchema(
-        type = "function",
-        function= ToolFunction(
-            name = func.__name__,
-            description = func.__doc__ or "",
-           parameters = ToolParameters(
-                type = "object",
-                properties = parameters,
-                required = required
-            )
-        )
+        type="function",
+        function=ToolFunction(
+            name=func.__name__,
+            description=func.__doc__ or "",
+            parameters=ToolParameters(
+                type="object", properties=parameters, required=required
+            ),
+        ),
     )

@@ -1,6 +1,7 @@
 from __future__ import annotations
-from dataclasses import dataclass, field, asdict
+
 import json
+from dataclasses import asdict, dataclass, field
 
 
 @dataclass

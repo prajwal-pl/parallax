@@ -1,10 +1,11 @@
-from dotenv import load_dotenv
-from core.tool import tool
-from core.agent import Agent
 import asyncio
 import os
 
+from dotenv import load_dotenv
 from tavily import TavilyClient
+
+from core.agent import Agent
+from core.tool import tool
 
 load_dotenv()
 
