@@ -67,6 +67,7 @@ class AgentRun:
 
                 continue
             else:
+                self.messages.append(response.to_message())
                 return AgentResult(
                     content=response.content or "",
                     iterations=self.iterations,
