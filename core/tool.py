@@ -2,7 +2,7 @@ import inspect
 import re
 import types
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, Literal, Union, get_args, get_origin
+from typing import Any, Literal, Union, get_args, get_origin, get_type_hints
 
 from core.types import ToolFunction, ToolParameters, ToolSchema
 
@@ -140,11 +140,17 @@ def extract_schema(func: Callable) -> ToolSchema:
     properties: dict[str, Any] = {}
     required: list[str] = []
 
+    try:
+        hints = get_type_hints(func)
+    except Exception:
+        hints = {}
+
     for param_name, param in sig.parameters.items():
         if param_name in ("self", "cls"):
             continue
 
-        schema_def = resolve_json_type(param.annotation)
+        raw_annotation = hints.get(param_name, param.annotation)
+        schema_def = resolve_json_type(raw_annotation)
 
         # Inject description from docstring, fallback to param_name
         schema_def["description"] = param_docs.get(param_name, param_name)
