@@ -6,7 +6,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from core.agent import Agent
 
-from core.errors import MaxIterationsError, ToolExecutionError, ToolNotFoundError
+from core.errors import (
+    MaxIterationsError,
+    ToolError,
+    ToolExecutionError,
+    ToolNotFoundError,
+)
 from core.llm import call_llm
 from core.types import AgentResult, Message
 
@@ -29,8 +34,12 @@ class AgentRun:
                 raise ToolNotFoundError(f"Tool '{name}' not registered")
             func = self.agent.tool_registry[name]
             result = await asyncio.wait_for(
-                asyncio.to_thread(func, **arguments), timeout=30
+                asyncio.to_thread(func, **arguments), timeout=30.0
             )
+        except (ToolError, ToolNotFoundError) as e:
+            result = f"Error: {e}"
+        except asyncio.TimeoutError:
+            result = f"Error: Tool '{name}' timed out after 30.0 seconds."
         except ToolExecutionError as e:
             result = f"Tool execution failed with error: {e}"
         except Exception as e:

@@ -2,6 +2,10 @@ class ParallaxError(Exception):
     pass
 
 
+class ToolError(ParallaxError):
+    pass
+
+
 class MaxIterationsError(ParallaxError):
     pass
 
