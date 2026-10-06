@@ -61,7 +61,9 @@ class EditorTool:
             return result
 
         if len(view_range) != 2:
-            raise ToolError("view_range must be a list of two integers: [start_line, end_line].")
+            raise ToolError(
+                "view_range must be a list of two integers: [start_line, end_line]."
+            )
 
         start, end = view_range
         if start < 1 or start > max(1, total_lines):
@@ -71,7 +73,9 @@ class EditorTool:
             end = total_lines
 
         if end < start:
-            raise ToolError(f"end_line ({end}) cannot be less than start_line ({start}).")
+            raise ToolError(
+                f"end_line ({end}) cannot be less than start_line ({start})."
+            )
 
         selected = lines[start - 1 : end]
         return (
@@ -94,7 +98,9 @@ class EditorTool:
 
     def _str_replace(self, path: str, old_str: str | None, new_str: str | None) -> str:
         if old_str is None:
-            raise ToolError("Parameter 'old_str' is required when command='str_replace'.")
+            raise ToolError(
+                "Parameter 'old_str' is required when command='str_replace'."
+            )
         new_str = new_str or ""
         if old_str == new_str:
             raise ToolError("'new_str' must be different from 'old_str'.")
@@ -113,7 +119,9 @@ class EditorTool:
                     f"old_str was not found verbatim, but matches when leading/trailing whitespace is stripped. "
                     "Ensure exact indentation and newline match."
                 )
-            raise ToolError(f"old_str was not found in '{path}'. Ensure exact verbatim match.")
+            raise ToolError(
+                f"old_str was not found in '{path}'. Ensure exact verbatim match."
+            )
 
         if len(matches) > 1:
             line_numbers = [content[: m.start()].count("\n") + 1 for m in matches]
@@ -140,7 +148,9 @@ class EditorTool:
             replaced_line + new_str.count("\n") + SNIPPET_CONTEXT_WINDOW,
         )
 
-        snippet = self._format_lines(new_lines[snip_start - 1 : snip_end], start_line=snip_start)
+        snippet = self._format_lines(
+            new_lines[snip_start - 1 : snip_end], start_line=snip_start
+        )
         return (
             f"The file '{path}' has been edited.\n"
             f"Preview of changes:\n{snippet}\n"
@@ -149,7 +159,9 @@ class EditorTool:
 
     def _insert(self, path: str, insert_line: int | None, new_str: str | None) -> str:
         if insert_line is None:
-            raise ToolError("Parameter 'insert_line' is required when command='insert'.")
+            raise ToolError(
+                "Parameter 'insert_line' is required when command='insert'."
+            )
         if new_str is None:
             raise ToolError("Parameter 'new_str' is required when command='insert'.")
 
@@ -158,7 +170,9 @@ class EditorTool:
         total_lines = len(lines)
 
         if insert_line < 0 or insert_line > total_lines:
-            raise ToolError(f"insert_line ({insert_line}) must be between 0 and {total_lines}.")
+            raise ToolError(
+                f"insert_line ({insert_line}) must be between 0 and {total_lines}."
+            )
 
         self._push_history(path, content)
 
@@ -174,7 +188,9 @@ class EditorTool:
             len(all_lines),
             insert_line + new_str.count("\n") + SNIPPET_CONTEXT_WINDOW + 1,
         )
-        snippet = self._format_lines(all_lines[snip_start - 1 : snip_end], start_line=snip_start)
+        snippet = self._format_lines(
+            all_lines[snip_start - 1 : snip_end], start_line=snip_start
+        )
 
         return (
             f"Inserted text after line {insert_line} in '{path}'.\n"
@@ -218,17 +234,19 @@ class EditorTool:
             new_str: The replacement string for 'str_replace', or content to insert for 'insert'.
             insert_line: Required for 'insert'. The line number after which to insert new_str.
         """
-        if command == "view":
-            return self._view(path, view_range)
-        elif command == "create":
-            return self._create(path, file_text)
-        elif command == "str_replace":
-            return self._str_replace(path, old_str, new_str)
-        elif command == "insert":
-            return self._insert(path, insert_line, new_str)
-        elif command == "undo_edit":
-            return self._undo_edit(path)
-        else:
-            raise ToolError(
-                f"Unrecognized command: '{command}'. Allowed commands: view, create, str_replace, insert, undo_edit."
-            )
+
+        match command:
+            case "view":
+                return self._view(path, view_range)
+            case "create":
+                return self._create(path, file_text)
+            case "str_replace":
+                return self._str_replace(path, old_str, new_str)
+            case "insert":
+                return self._insert(path, insert_line, new_str)
+            case "undo_edit":
+                return self._undo_edit(path)
+            case _:
+                raise ToolError(
+                    f"Unrecognized command: '{command}'. Allowed commands: view, create, str_replace, insert, undo_edit."
+                )
