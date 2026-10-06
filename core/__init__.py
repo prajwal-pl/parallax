@@ -10,7 +10,9 @@ from .errors import (
 )
 from .llm import call_llm
 from .tool import extract_schema, tool
+from .tools.bash import BashTool
 from .tools.editor import EditorTool
+from .tools.search import SearchTool
 from .types import (
     AgentEvent,
     AgentResult,
