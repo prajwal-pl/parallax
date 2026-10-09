@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import asdict, dataclass, field
+from enum import Enum
 
 
 @dataclass
@@ -41,9 +43,22 @@ class Message:
         return {"role": self.role, "content": self.content}
 
 
+class EventType(str, Enum):
+    RUN_STARTED = ("run_started",)
+    MODEL_STARTED = ("model_started",)
+    TOOL_STARTED = ("tool_started",)
+    TOOL_COMPLETED = ("tool_completed",)
+    MODEL_COMPLETED = ("model_completed",)
+    RUN_COMPLETED = ("run_completed",)
+    RUN_FAILED = "run_failed"
+    TOOL_FAILED = "tool_failed"
+
+
 @dataclass
 class AgentEvent:
-    pass
+    type: EventType
+    data: dict = field(default_factory=dict)
+    timestamp: float = field(default_factory=time.time)
 
 
 @dataclass

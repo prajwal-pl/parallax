@@ -13,7 +13,7 @@ from core.errors import (
     ToolNotFoundError,
 )
 from core.llm import call_llm
-from core.types import AgentResult, Message
+from core.types import AgentEvent, AgentResult, EventType, Message
 
 
 class AgentRun:
@@ -24,10 +24,23 @@ class AgentRun:
             Message(role="user", content=user_input),
         ]
         self.iterations = 0
+        self._event_queue: asyncio.Queue[AgentEvent | None] = asyncio.Queue()
+
+    async def _emit(self, event_type: EventType, **data):
+        """Push an event to the queue"""
+        event = AgentEvent(type=event_type, data=data)
+        await self._event_queue.put(event)
 
     async def _dispatch_tool(self, tool_call) -> Message:
         name = tool_call.name
         arguments = tool_call.arguments
+
+        await self._emit(
+            EventType.TOOL_STARTED,
+            tool_call_id=tool_call.id,
+            tool_name=name,
+            arguments=arguments,
+        )
 
         try:
             if name not in self.agent.tool_registry:
@@ -36,14 +49,45 @@ class AgentRun:
             result = await asyncio.wait_for(
                 asyncio.to_thread(func, **arguments), timeout=30.0
             )
+            await self._emit(
+                EventType.TOOL_COMPLETED,
+                tool_call_id=tool_call.id,
+                tool_name=name,
+                error=str(result),
+            )
+
         except (ToolError, ToolNotFoundError) as e:
             result = f"Error: {e}"
+            await self._emit(
+                EventType.TOOL_FAILED,
+                tool_call_id=tool_call.id,
+                tool_name=name,
+                error=str(result),
+            )
         except asyncio.TimeoutError:
             result = f"Error: Tool '{name}' timed out after 30.0 seconds."
+            await self._emit(
+                EventType.TOOL_FAILED,
+                tool_call_id=tool_call.id,
+                tool_name=name,
+                error=str(result),
+            )
         except ToolExecutionError as e:
             result = f"Tool execution failed with error: {e}"
+            await self._emit(
+                EventType.TOOL_FAILED,
+                tool_call_id=tool_call.id,
+                tool_name=name,
+                error=str(result),
+            )
         except Exception as e:
             result = f"Something went wrong, tool execution failed with error: {e}"
+            await self._emit(
+                EventType.TOOL_FAILED,
+                tool_call_id=tool_call.id,
+                tool_name=name,
+                error=str(result),
+            )
 
         return Message(role="tool", content=str(result), tool_call_id=tool_call.id)
 
@@ -56,6 +100,12 @@ class AgentRun:
                 raise MaxIterationsError(
                     f"Agent exceeded {self.MAX_ITERATIONS} iterations and did not produce a result"
                 )
+
+            await self._emit(
+                EventType.MODEL_STARTED,
+                iterations=self.iterations,
+                model=self.agent.model,
+            )
 
             response = await call_llm(
                 model=self.agent.model,
@@ -77,6 +127,12 @@ class AgentRun:
                 continue
             else:
                 self.messages.append(response.to_message())
+                content = response.content or ""
+
+                await self._emit(
+                    EventType.RUN_COMPLETED, content=content, iterations=self.iterations
+                )
+
                 return AgentResult(
                     content=response.content or "",
                     iterations=self.iterations,
