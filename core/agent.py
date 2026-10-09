@@ -1,6 +1,8 @@
+from collections.abc import AsyncIterator
+
 from core.run import AgentRun
 from core.tool import extract_schema
-from core.types import AgentResult
+from core.types import AgentEvent, AgentResult
 
 
 class Agent:
@@ -18,3 +20,8 @@ class Agent:
     async def run(self, user_input: str) -> AgentResult:
         state = AgentRun(self, user_input)
         return await state.execute()
+
+    async def run_stream(self, user_input: str) -> AsyncIterator[AgentEvent]:
+        state = AgentRun(self, user_input)
+        async for event in state.stream():
+            yield event

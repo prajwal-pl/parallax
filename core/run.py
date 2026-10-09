@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
+from typing_extensions import AsyncGenerator
+
 if TYPE_CHECKING:
     from core.agent import Agent
 
@@ -94,47 +96,67 @@ class AgentRun:
     MAX_ITERATIONS = 30
 
     async def execute(self) -> AgentResult:
-        while True:
-            self.iterations += 1
-            if self.iterations > self.MAX_ITERATIONS:
-                raise MaxIterationsError(
-                    f"Agent exceeded {self.MAX_ITERATIONS} iterations and did not produce a result"
-                )
-
-            await self._emit(
-                EventType.MODEL_STARTED,
-                iterations=self.iterations,
-                model=self.agent.model,
-            )
-
-            response = await call_llm(
-                model=self.agent.model,
-                messages=self.messages,
-                tools=self.agent.tool_schemas,
-            )
-
-            if response.tool_calls:
-                self.messages.append(response.to_message())
-                async with asyncio.TaskGroup() as tg:
-                    tasks = [
-                        tg.create_task(self._dispatch_tool(tc))
-                        for tc in response.tool_calls
-                    ]
-
-                for task in tasks:
-                    self.messages.append(task.result())
-
-                continue
-            else:
-                self.messages.append(response.to_message())
-                content = response.content or ""
+        try:
+            while True:
+                self.iterations += 1
+                if self.iterations > self.MAX_ITERATIONS:
+                    raise MaxIterationsError(
+                        f"Agent exceeded {self.MAX_ITERATIONS} iterations and did not produce a result"
+                    )
 
                 await self._emit(
-                    EventType.RUN_COMPLETED, content=content, iterations=self.iterations
+                    EventType.MODEL_STARTED,
+                    iterations=self.iterations,
+                    model=self.agent.model,
                 )
 
-                return AgentResult(
-                    content=response.content or "",
-                    iterations=self.iterations,
+                response = await call_llm(
+                    model=self.agent.model,
                     messages=self.messages,
+                    tools=self.agent.tool_schemas,
                 )
+
+                if response.tool_calls:
+                    self.messages.append(response.to_message())
+                    async with asyncio.TaskGroup() as tg:
+                        tasks = [
+                            tg.create_task(self._dispatch_tool(tc))
+                            for tc in response.tool_calls
+                        ]
+
+                    for task in tasks:
+                        self.messages.append(task.result())
+
+                    continue
+                else:
+                    self.messages.append(response.to_message())
+                    content = response.content or ""
+
+                    await self._emit(
+                        EventType.RUN_COMPLETED,
+                        content=content,
+                        iterations=self.iterations,
+                    )
+
+                    return AgentResult(
+                        content=response.content or "",
+                        iterations=self.iterations,
+                        messages=self.messages,
+                    )
+        except Exception as e:
+            await self._emit(EventType.RUN_FAILED, errors=str(e))
+            raise
+        finally:
+            await self._event_queue.put(None)
+
+    async def stream(self) -> AsyncGenerator[AgentEvent]:
+        task = asyncio.create_task(self.execute())
+
+        try:
+            while True:
+                event = await self._event_queue.get()
+                if event is None:
+                    break
+                yield event
+        finally:
+            await task
