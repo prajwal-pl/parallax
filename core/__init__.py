@@ -16,6 +16,7 @@ from .tools.search import SearchTool
 from .types import (
     AgentEvent,
     AgentResult,
+    EventType,
     LLMResponse,
     Message,
     ToolCall,

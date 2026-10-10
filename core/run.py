@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
-
-from typing_extensions import AsyncGenerator
 
 if TYPE_CHECKING:
     from core.agent import Agent
@@ -21,6 +20,7 @@ from core.types import AgentEvent, AgentResult, EventType, Message
 class AgentRun:
     def __init__(self, agent: Agent, user_input: str):
         self.agent = agent
+        self.user_input = user_input
         self.messages = [
             Message(role="system", content=agent.system_prompt),
             Message(role="user", content=user_input),
@@ -55,7 +55,7 @@ class AgentRun:
                 EventType.TOOL_COMPLETED,
                 tool_call_id=tool_call.id,
                 tool_name=name,
-                error=str(result),
+                result=str(result),
             )
 
         except (ToolError, ToolNotFoundError) as e:
@@ -96,6 +96,7 @@ class AgentRun:
     MAX_ITERATIONS = 30
 
     async def execute(self) -> AgentResult:
+        await self._emit(EventType.RUN_STARTED, task=self.user_input)
         try:
             while True:
                 self.iterations += 1
@@ -114,6 +115,11 @@ class AgentRun:
                     model=self.agent.model,
                     messages=self.messages,
                     tools=self.agent.tool_schemas,
+                )
+
+                await self._emit(
+                    EventType.MODEL_COMPLETED,
+                    iterations=self.iterations,
                 )
 
                 if response.tool_calls:
@@ -139,17 +145,17 @@ class AgentRun:
                     )
 
                     return AgentResult(
-                        content=response.content or "",
+                        content=content,
                         iterations=self.iterations,
                         messages=self.messages,
                     )
         except Exception as e:
-            await self._emit(EventType.RUN_FAILED, errors=str(e))
+            await self._emit(EventType.RUN_FAILED, error=str(e))
             raise
         finally:
             await self._event_queue.put(None)
 
-    async def stream(self) -> AsyncGenerator[AgentEvent]:
+    async def stream(self) -> AsyncIterator[AgentEvent]:
         task = asyncio.create_task(self.execute())
 
         try:
@@ -159,4 +165,14 @@ class AgentRun:
                     break
                 yield event
         finally:
-            await task
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            else:
+                try:
+                    await task
+                except Exception:
+                    pass
