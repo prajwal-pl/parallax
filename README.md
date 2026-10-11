@@ -2095,9 +2095,9 @@ The LLM is one component of the system.
 
 ## Status
 
-⚡ **Core Runtime Operational (Phases 0–5 Complete)**
+⚡ **Core Runtime & CLI Operational (Phases 0–5 & Phase 14 Complete)**
 
-The core headless runtime is implemented and packaged as an editable install (`src/parallax`):
+The core headless runtime and flagship terminal CLI are fully implemented, tested, and packaged:
 
 - **Phase 0 (Foundation)**: Dataclasses, JSON schemas, typed exceptions, `LocalEnvironment` abstraction.
 - **Phase 1 (Tools)**: Tool decorator & registry, `BashTool` (with 30k char head+tail windowing), `EditorTool`, `SearchTool`.
@@ -2105,8 +2105,13 @@ The core headless runtime is implemented and packaged as an editable install (`s
 - **Phase 3 (Hardening & Resilience)**: Retry loop with full exponential jitter, 429/500/502/503 handling, HTTP error classification, safe tool dispatch.
 - **Phase 4 (Packaging & Architecture)**: Modular `src/parallax/` layout cleanly decoupling core runtime (`parallax.core`) from UI layers.
 - **Phase 5 (Context Management & Compaction)**: Exact tiktoken token estimation, dynamic sliding context windowing, turn-atomic compaction (preserving OpenAI tool call/response pairs).
+- **Phase 14 (Interactive Terminal CLI)**: Flagship terminal interface via Typer + Rich (`parallax` CLI entrypoint):
+  - Single-shot execution: `parallax "Fix failing tests in auth"`
+  - Interactive multi-turn REPL: `parallax` / `parallax chat` with slash commands (`/help`, `/model`, `/context`, `/compact`, `/tools`, `/clear`, `/exit`)
+  - Diagnostics & tools: `parallax doctor` and `parallax tools`
+  - Premium developer UX: strictly zero emojis, live typing/progress indicators, collapsible tool receipts, and bounded syntax diff previews.
 
-**Next Milestone**: Phase 14 (Interactive Rich CLI).
+**Next Milestone**: Process-Level Execution Control & Phase 11 (Local SQLite Persistence).
 
 ------------------------------------------------------------------------
 

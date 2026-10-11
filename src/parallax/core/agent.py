@@ -6,7 +6,8 @@ from parallax.core.errors import DuplicateToolError
 from parallax.core.llm import LLMClient, OpenRouterClient, RetryPolicy
 from parallax.core.run import AgentRun
 from parallax.core.tool import extract_schema
-from parallax.core.types import AgentEvent, AgentResult
+from parallax.core.types import AgentEvent, AgentResult, Message
+
 
 
 class Agent:
@@ -34,17 +35,22 @@ class Agent:
         self.tool_registry[name] = func
         self.tool_schemas.append(schema.to_dict())
 
-    async def run(self, user_input: str) -> AgentResult:
-        state = AgentRun(self, user_input)
+    async def run(
+        self, user_input: str, history: list[Message] | None = None
+    ) -> AgentResult:
+        state = AgentRun(self, user_input, history=history)
         return await state.execute()
 
-    async def run_stream(self, user_input: str) -> AsyncIterator[AgentEvent]:
+    async def run_stream(
+        self, user_input: str, history: list[Message] | None = None
+    ) -> AsyncIterator[AgentEvent]:
         """
         Stream lifecycle events of a run in real time.
 
         Failures are reported as a RUN_FAILED event; unlike `run()`, the
         underlying exception is not re-raised to the consumer.
         """
-        state = AgentRun(self, user_input)
+        state = AgentRun(self, user_input, history=history)
         async for event in state.stream():
             yield event
+

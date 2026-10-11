@@ -22,14 +22,22 @@ from parallax.core.types import AgentEvent, AgentResult, EventType, LLMResponse,
 
 
 class AgentRun:
-    def __init__(self, agent: Agent, user_input: str):
+    def __init__(
+        self,
+        agent: Agent,
+        user_input: str,
+        history: list[Message] | None = None,
+    ):
         self.agent = agent
         self.user_input = user_input
+        prior_messages = history or []
+        filtered_prior = [m for m in prior_messages if m.role != "system"]
         self.messages = [
             Message(
                 role="system",
                 content=agent.context.build_system_prompt(agent.system_prompt),
             ),
+            *filtered_prior,
             Message(role="user", content=user_input),
         ]
         self.iterations = 0
@@ -196,6 +204,7 @@ class AgentRun:
                         EventType.RUN_COMPLETED,
                         content=content,
                         iterations=self.iterations,
+                        messages=self.messages,
                     )
 
                     return AgentResult(

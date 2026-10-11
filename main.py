@@ -22,7 +22,7 @@ async def main():
     search_tool = SearchTool(env=env)
 
     agent = Agent(
-        model="cohere/north-mini-code:free",
+        model="liquid/lfm-2.5-2.6b:free",
         context=ContextConfig(workspace="."),
         system_prompt=(
             "You are an expert autonomous software engineer. "

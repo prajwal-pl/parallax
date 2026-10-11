@@ -23,23 +23,30 @@ The same runtime runs locally via CLI, in a desktop app, and behind a web API. N
 
 ## Current Status
 
-Phases 0–5 are complete (foundation, async runtime, resilience, coding tools, event streaming, context engineering, and `src/parallax/` packaging).
+Phases 0–5 and Phase 14 are complete (foundation, async runtime, resilience, coding tools, event streaming, context engineering, `src/parallax/` packaging, and interactive terminal CLI with Typer + Rich).
 
 **What works today:**
 - Package Architecture: Standard `src/parallax/` distribution layout, installable in editable mode via `uv pip install -e .` with clean top-level exports (`from parallax import Agent, ContextConfig, ...`).
+- Interactive CLI & Premium Terminal UX (Phase 14): `parallax` command registered in PATH via Typer + Rich:
+  - Single-shot task execution: `parallax "Fix tests in auth"` and `parallax run "<task>"`
+  - Interactive multi-turn REPL: `parallax` (with no args) and `parallax chat`
+  - Slash commands: `/help`, `/model`, `/context`, `/compact`, `/tools`, `/clear`, `/exit`
+  - Diagnostics: `parallax doctor` checking Python, API keys, Git status, workspace permissions
+  - Tool inspection: `parallax tools` rendering registered schemas in clean rounded tables
+  - Pure developer icons (no emojis), live dots typing/processing indicator, collapsible tool receipts with elapsed time, bounded output previews with syntax diff coloring.
 - Async Runtime: Strict `Agent` (reusable config) / `AgentRun` (single execution) separation, parallel tool dispatch via `asyncio.TaskGroup`, per-tool timeout, iteration guard (`MAX_ITERATIONS = 30`).
 - LLM Layer & Resilience: Injectable `LLMClient` protocol, `OpenRouterClient` with lazy SDK init, exponential backoff with full jitter on 408/429/5xx and timeouts, unparseable model tool arguments handled gracefully as tool errors without crashing.
 - Coding Tools: Sandboxed `LocalEnvironment` preventing path escape (`validate_path`), `EditorTool` (`str_replace_editor`), `BashTool` (with 30,000 char head+tail truncation), and `SearchTool` (`search_code` with regex/directory filters).
 - Event Streaming: `Agent.run_stream()` emitting typed `AgentEvent`s (`RUN_STARTED`, `MODEL_STARTED`, `MODEL_COMPLETED`, `MODEL_RETRY`, `TOOL_STARTED`, `TOOL_COMPLETED`, `TOOL_FAILED`, `CONTEXT_COMPACTED`, `RUN_COMPLETED`, `RUN_FAILED`) with timestamps, latency, token usage, and per-run `run_id`.
 - Context Engineering: `core/context/` package with `TokenEstimator` (tiktoken + fallback), tool output windowing, auto-discovery of repo instructions (`AGENTS.md`, `CLAUDE.md`, `.parallax/`), and turn-atomic message compaction honoring tool-call pairings.
-- 131 automated unit & E2E tests, 0 pyright errors.
+- 139 automated unit & E2E tests, 0 pyright errors.
 
 **Next up:**
-- Phase 14: Interactive CLI & Rich Terminal UX (`parallax` command and `parallax chat` via Typer + Rich)
-- Process-level termination for bash commands (killing process groups)
+- Process-level termination for bash commands (killing process groups on timeout/cancel)
 - Phase 11: Local persistence with SQLite (`aiosqlite`)
 - Phase 8: Model Context Protocol (MCP) integration
 - Phase 9: Subagent delegation
+
 
 ---
 
@@ -631,26 +638,33 @@ Use Python's `logging` module at every key event. Consider OpenTelemetry for sta
 
 ---
 
-### Phase 14 — CLI (First Interface)
+### Phase 14 — CLI (First Interface) ✅ Complete
 
-Only after the core is stable does it make sense to build the CLI.
+The first flagship user-facing interface to the headless Parallax runtime is implemented, fully tested, and registered in `pyproject.toml` as `parallax`:
 
-**Technology:** Typer (for commands) + Rich (for terminal rendering).
+**Technology:** Typer (command routing, typing) + Rich (rendering, theme, progress spinners).
 
-CLI is thin:
-1. Parse input
-2. Configure the runtime
-3. Subscribe to `AgentEvent` stream
-4. Render events in the terminal
+**Capabilities:**
+1. **Single-shot task execution**:
+   ```bash
+   parallax "Fix the failing tests in tests/test_auth.py"
+   parallax run --model anthropic/claude-3.5-sonnet "Refactor database layer"
+   ```
+2. **Interactive multi-turn REPL**:
+   ```bash
+   parallax        # Opens interactive session directly
+   parallax chat   # Explicit chat subcommand
+   ```
+   Supports slash commands: `/help`, `/model`, `/context`, `/compact`, `/tools`, `/clear`, `/exit`.
+3. **Diagnostics & introspection**:
+   ```bash
+   parallax doctor   # Environment, API keys, git status, workspace check
+   parallax tools    # Pretty table of registered runtime tools and signatures
+   parallax version  # Version and runtime info
+   ```
+4. **UX Philosophy**: Pure developer glyphs (`●`, `›`, `✓`, `✕`, `!`, `·`, `─`) with strictly no emojis, live dot typing/processing indicators with elapsed timers, collapsible tool receipts, and bounded syntax diff previews.
 
-```bash
-parallax "Fix the authentication tests"
-parallax run --model openai/gpt-4o "Refactor the database layer"
-parallax session list
-parallax models
-```
-
-The CLI renders streaming tokens in real time, shows tool calls as they happen, and displays a structured summary on completion. All rendering logic lives in the CLI — not in `core/`.
+All rendering logic lives inside `src/parallax/cli/` — leaving `src/parallax/core/` 100% headless.
 
 ---
 
@@ -668,27 +682,21 @@ Platform concerns never enter `core/`. The core receives an effective configurat
 
 ## Recommended Immediate Next Steps
 
-Phases 0 through 5 are complete. The runtime is verified across 131 tests and packaged under `src/parallax/`. In order:
+Phases 0 through 5 and Phase 14 are complete. The runtime and CLI are verified across 139 tests and 0 pyright errors. In order:
 
 ```
-1. Phase 14 — Interactive CLI & Terminal UX (Typer + Rich)
-   ├── Add typer and rich dependencies to pyproject.toml
-   ├── Create src/parallax/cli/ (app.py, console.py, renderer.py, repl.py)
-   ├── Single-shot execution: `parallax "Fix tests in auth"`
-   ├── Interactive REPL: `parallax chat`
-   └── Register entrypoint: [project.scripts] parallax = "parallax.cli.app:main"
+1. Process-Level Execution Control
+   └── Terminate process groups on bash timeout or cancellation (os.killpg)
 
-2. Process-Level Execution Control
-   └── Terminate process groups on bash timeout or cancellation
-
-3. Phase 11 — Local Persistence (SQLite / aiosqlite)
+2. Phase 11 — Local Persistence (SQLite / aiosqlite)
    ├── Event-driven session and checkpoint store
+   ├── Save runs and message history
    └── Resume past runs: `parallax session resume <id>`
 
-4. Phase 8 — Model Context Protocol (MCP) Integration
+3. Phase 8 — Model Context Protocol (MCP) Integration
    └── Connect external MCP servers to agent tool registry
 
-5. Phase 9 — Subagents & Parallel Orchestration
+4. Phase 9 — Subagents & Parallel Orchestration
    └── Specialized child agents (Researcher, Coder, Tester) with parent_run_id
 ```
 

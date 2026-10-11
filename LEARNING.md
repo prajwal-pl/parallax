@@ -947,3 +947,12 @@ As Parallax progressed from design to an operational headless runtime, several p
   - Top-level `parallax/__init__.py` provides clean public exports (`Agent`, `LocalEnvironment`, `BashTool`, `EventType`).
   - Next consumers (CLI in Phase 14, API/Web in Phase 15, Desktop in Phase 16) import from `parallax` without ever contaminating core runtime logic.
 
+### 10.6 Minimalist Terminal UX & Event Consumption (Phase 14)
+- **The Challenge**: Terminal UIs for AI agents often suffer from visual bloat (noisy emojis, excessive text redraws, un-scannable logs) or sluggish cold-start latency.
+- **The Solution**:
+  - **Zero-Emoji Developer Glyphs**: Adopted clean Unicode glyphs (`●`, `›`, `✓`, `✕`, `!`, `·`, `─`) with a muted, high-contrast palette (indigo/slate/mint).
+  - **Live Typing & Progress Indicators**: Replaced wordy 'thinking...' messages with dynamic dots spinners displaying elapsed timers and model names (`⠋ generating · claude-3.5-sonnet · 1.2s`).
+  - **Receipt Collapsing & Bounded Diffs**: Tools collapse into compact receipts with elapsed execution times (`✓ bash $ pytest · 0.4s`) and bounded previews with syntax diff coloring (`+` in mint green, `-` in coral red).
+  - **Multi-turn REPL State**: Enabled stateful conversations where `Agent.run_stream(user_input, history=messages)` preserves turn context, with slash commands (`/help`, `/model`, `/context`, `/compact`, `/tools`, `/clear`, `/exit`) and signal-safe cooperative cancellation on `Ctrl+C`.
+
+
