@@ -1,12 +1,12 @@
 import asyncio
 from dotenv import load_dotenv
 
-from core.agent import Agent
-from core.context import ContextConfig
-from core.environment import LocalEnvironment
-from core.tools.bash import BashTool
-from core.tools.search import SearchTool
-from core.types import EventType
+from parallax.core.agent import Agent
+from parallax.core.context import ContextConfig
+from parallax.core.environment import LocalEnvironment
+from parallax.core.tools.bash import BashTool
+from parallax.core.tools.search import SearchTool
+from parallax.core.types import EventType
 
 load_dotenv()
 

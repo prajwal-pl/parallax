@@ -1,13 +1,16 @@
 import asyncio
+
 from dotenv import load_dotenv
 
-from core.agent import Agent
-from core.context import ContextConfig
-from core.environment import LocalEnvironment
-from core.tools.bash import BashTool
-from core.tools.editor import EditorTool
-from core.tools.search import SearchTool
-from core.types import EventType
+from parallax import (
+    Agent,
+    BashTool,
+    ContextConfig,
+    EditorTool,
+    EventType,
+    LocalEnvironment,
+    SearchTool,
+)
 
 load_dotenv()
 
@@ -34,7 +37,7 @@ async def main():
     agent.add_tool(bash_tool.bash)
     agent.add_tool(search_tool.search_code)
 
-    prompt = "Use search_code to find where BashTool is defined and run pytest on tests/test_bash_tool.py using bash."
+    prompt = "Understand the entire architecture, search for all tool definitions and explan them in brief"
     print(f"\nUser: {prompt}\n")
 
     print("--- Real-Time Event Stream ---")

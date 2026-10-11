@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from itertools import chain
 
-from core.types import Message
+from parallax.core.types import Message
 
 SUMMARY_START = "[Earlier progress summary]"
 _OMIT_PREFIX = "... ["

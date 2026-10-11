@@ -1,8 +1,8 @@
 import pytest
-from core.environment import LocalEnvironment
-from core.errors import ToolError
-from core.tool import extract_schema
-from core.tools.editor import EditorTool
+from parallax.core.environment import LocalEnvironment
+from parallax.core.errors import ToolError
+from parallax.core.tool import extract_schema
+from parallax.core.tools.editor import EditorTool
 
 
 @pytest.fixture

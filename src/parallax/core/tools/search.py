@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import re
 
-from core.environment import Environment
-from core.errors import ToolError
-from core.tool import tool
+from parallax.core.environment import Environment
+from parallax.core.errors import ToolError
+from parallax.core.tool import tool
 
 
 class SearchTool:

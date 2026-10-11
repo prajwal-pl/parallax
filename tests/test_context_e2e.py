@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from core.agent import Agent
-from core.context import ContextConfig
-from core.environment import LocalEnvironment
-from core.tools.bash import BashTool
-from core.tools.editor import EditorTool
-from core.tools.search import SearchTool
-from core.types import EventType, LLMResponse, Message, ToolCall, Usage
+from parallax.core.agent import Agent
+from parallax.core.context import ContextConfig
+from parallax.core.environment import LocalEnvironment
+from parallax.core.tools.bash import BashTool
+from parallax.core.tools.editor import EditorTool
+from parallax.core.tools.search import SearchTool
+from parallax.core.types import EventType, LLMResponse, Message, ToolCall, Usage
 
 
 class ValidatingLLM:
@@ -85,7 +85,7 @@ async def test_repo_instructions_reach_the_model(tmp_path):
 async def test_huge_tool_output_truncated_in_history_but_full_in_event(tmp_path):
     llm = ValidatingLLM(
         [
-            call("c1", "bash", command="python3 -c \"print('A'*20000 + 'THE_END')\""),
+            call("c1", "bash", command="python3 -c \"print('A'*40000 + 'THE_END')\""),
             LLMResponse(content="done"),
         ]
     )
@@ -93,7 +93,7 @@ async def test_huge_tool_output_truncated_in_history_but_full_in_event(tmp_path)
     events = [e async for e in agent.run_stream("go")]
 
     completed = next(e for e in events if e.type == EventType.TOOL_COMPLETED)
-    assert len(completed.data["result"]) > 20_000  # UI gets everything
+    assert len(completed.data["result"]) > 25_000  # UI gets bash output (which preserved head & tail)
 
     tool_in_history = next(m for m in llm.requests[1] if m.role == "tool")
     assert len(tool_in_history.content) < 2_500

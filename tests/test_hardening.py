@@ -4,10 +4,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from core.agent import Agent
-from core.errors import DuplicateToolError
-from core.llm import parse_tool_arguments
-from core.types import EventType, LLMResponse, ToolCall
+from parallax.core.agent import Agent
+from parallax.core.errors import DuplicateToolError
+from parallax.core.llm import parse_tool_arguments
+from parallax.core.types import EventType, LLMResponse, ToolCall
 
 
 def test_parse_tool_arguments_valid():

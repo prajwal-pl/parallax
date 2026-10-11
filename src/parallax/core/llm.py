@@ -10,7 +10,7 @@ import httpx
 from dotenv import load_dotenv
 from openrouter import OpenRouter
 
-from core.types import LLMResponse, Message, ToolCall, Usage
+from parallax.core.types import LLMResponse, Message, ToolCall, Usage
 
 load_dotenv()
 

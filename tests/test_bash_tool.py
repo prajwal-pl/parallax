@@ -1,8 +1,8 @@
 import pytest
-from core.environment import LocalEnvironment
-from core.errors import ToolError
-from core.tool import extract_schema
-from core.tools.bash import BashTool
+from parallax.core.environment import LocalEnvironment
+from parallax.core.errors import ToolError
+from parallax.core.tool import extract_schema
+from parallax.core.tools.bash import BashTool
 
 
 @pytest.fixture
@@ -52,3 +52,15 @@ def test_bash_schema_extraction(bash_tool):
     assert props["timeout"]["default"] == 30.0
 
     assert fn["parameters"]["required"] == ["command"]
+
+
+def test_bash_output_truncation_preserves_head_and_tail(bash_tool):
+    # Produce output well over MAX_BASH_OUTPUT_CHARS (30,000)
+    cmd = "python3 -c \"print('START_MARKER_' + 'A' * 40000 + '_END_MARKER')\""
+    res = bash_tool.bash(cmd)
+    assert "START_MARKER_" in res
+    assert "_END_MARKER" in res
+    assert "[Output truncated:" in res
+    assert "characters omitted]" in res
+    assert len(res) < 32_000
+

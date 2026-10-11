@@ -1,6 +1,6 @@
 import pytest
 from typing import Literal, Optional, Union
-from core.tool import tool, extract_schema, parse_docstring, resolve_json_type
+from parallax.core.tool import tool, extract_schema, parse_docstring, resolve_json_type
 
 
 def test_tool_decorator():

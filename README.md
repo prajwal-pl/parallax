@@ -271,13 +271,41 @@ This prevents UI concerns from leaking into the runtime.
 
 # Repository Structure
 
-The intended long-term structure is:
+### Current Codebase (`src/` Package Layout)
+
+Parallax is organized as an installable package (`src/parallax`) providing a headless agent runtime decoupled from user interfaces:
+
+``` text
+parallax/
+├── src/
+│   └── parallax/               # Main installable package
+│       ├── __init__.py         # Public exports (Agent, LocalEnvironment, BashTool, etc.)
+│       └── core/               # Headless agent runtime
+│           ├── agent.py        # Agent coordinator & high-level run methods
+│           ├── run.py          # Asynchronous TaskGroup execution loop
+│           ├── llm.py          # LLM client with retry & full exponential jitter
+│           ├── environment.py  # LocalEnvironment runtime abstraction
+│           ├── tool.py         # Tool decorator & registry system
+│           ├── types.py        # Typed dataclasses (Message, AgentEvent, etc.)
+│           ├── errors.py       # Domain error hierarchy
+│           ├── tools/          # Core tools (bash, editor, search)
+│           └── context/        # Token estimation, compactor, manager
+├── tests/                      # Comprehensive test suite (131+ unit & e2e tests)
+├── pyproject.toml              # Dependencies, packaging & build configuration
+├── PLAN.md                     # Roadmap and execution tracking
+├── LEARNING.md                 # Engineering study guide & applied learnings
+└── README.md
+```
+
+### Intended Long-Term Monorepo Evolution
+
+As interfaces and services expand (CLI, Web, Desktop), the architecture will evolve into a workspace structure:
 
 ``` text
 parallax/
 │
 ├── packages/
-│   ├── parallax-core/
+│   ├── parallax-core/          # Headless runtime package
 │   │   └── src/
 │   │       └── parallax/
 │   │           ├── runtime/
@@ -290,16 +318,16 @@ parallax/
 │   │           ├── persistence/
 │   │           └── evals/
 │   │
-│   └── parallax-cli/
+│   └── parallax-cli/           # Rich interactive terminal interface
 │       └── src/
 │           └── parallax_cli/
 │
 ├── apps/
-│   ├── web/
-│   └── desktop/
+│   ├── web/                    # Next.js web application
+│   └── desktop/                # Tauri / Rust desktop client
 │
 ├── services/
-│   └── api/
+│   └── api/                    # Headless API service
 │
 ├── evals/
 ├── docs/
@@ -308,10 +336,7 @@ parallax/
 └── uv.lock
 ```
 
-This is the destination, not a requirement to create every directory
-immediately.
-
-The project should grow incrementally.
+The project grows incrementally, keeping the runtime clean and headless at every stage.
 
 ------------------------------------------------------------------------
 
@@ -2070,15 +2095,18 @@ The LLM is one component of the system.
 
 ## Status
 
-🚧 **Early development**
+⚡ **Core Runtime Operational (Phases 0–5 Complete)**
 
-The project is currently transitioning from a minimal LLM + tool-calling
-prototype into a reusable `parallax-core` runtime.
+The core headless runtime is implemented and packaged as an editable install (`src/parallax`):
 
-The immediate objective is to establish a clean, asynchronous,
-model-agnostic runtime before adding advanced capabilities such as
-repository indexing, RAG, MCP, subagents, sandboxing, and platform
-services.
+- **Phase 0 (Foundation)**: Dataclasses, JSON schemas, typed exceptions, `LocalEnvironment` abstraction.
+- **Phase 1 (Tools)**: Tool decorator & registry, `BashTool` (with 30k char head+tail windowing), `EditorTool`, `SearchTool`.
+- **Phase 2 (Async Agent Loop)**: Asynchronous task group runner, queue-based event streaming (`AgentEvent`, `EventType`), cooperative cancellation.
+- **Phase 3 (Hardening & Resilience)**: Retry loop with full exponential jitter, 429/500/502/503 handling, HTTP error classification, safe tool dispatch.
+- **Phase 4 (Packaging & Architecture)**: Modular `src/parallax/` layout cleanly decoupling core runtime (`parallax.core`) from UI layers.
+- **Phase 5 (Context Management & Compaction)**: Exact tiktoken token estimation, dynamic sliding context windowing, turn-atomic compaction (preserving OpenAI tool call/response pairs).
+
+**Next Milestone**: Phase 14 (Interactive Rich CLI).
 
 ------------------------------------------------------------------------
 

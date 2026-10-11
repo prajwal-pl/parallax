@@ -5,15 +5,15 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from core.agent import Agent
-from core.errors import LLMExecutionError
-from core.llm import (
+from parallax.core.agent import Agent
+from parallax.core.errors import LLMExecutionError
+from parallax.core.llm import (
     OpenRouterClient,
     RetryPolicy,
     backoff_delay,
     is_retryable,
 )
-from core.types import EventType, LLMResponse, Usage
+from parallax.core.types import EventType, LLMResponse, Usage
 
 FAST = RetryPolicy(max_attempts=3, base_delay=0.0, max_delay=0.0, call_timeout=5.0)
 
@@ -152,7 +152,7 @@ async def test_timeout_is_retried():
 async def test_backoff_sleep_is_awaited():
     policy = RetryPolicy(max_attempts=2, base_delay=0.5, max_delay=0.5)
     agent, _ = make_agent([HTTPError(429), OK], retry=policy)
-    with patch("core.run.asyncio.sleep", new=AsyncMock()) as sleep:
+    with patch("parallax.core.run.asyncio.sleep", new=AsyncMock()) as sleep:
         await agent.run("hi")
     sleep.assert_awaited_once()
     assert 0 <= sleep.await_args.args[0] <= 0.5  # type: ignore[union-attr]

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from core.environment import Environment
-from core.tool import tool
+from parallax.core.environment import Environment
+from parallax.core.tool import tool
 
 MAX_BASH_OUTPUT_CHARS = 30_000
 
@@ -34,11 +34,14 @@ class BashTool:
 
         combined_output = "\n".join(output_parts).strip()
 
-        # Truncate if output exceeds safety budget
+        # Truncate if output exceeds safety budget, preserving head and tail
         if len(combined_output) > MAX_BASH_OUTPUT_CHARS:
+            keep = MAX_BASH_OUTPUT_CHARS // 2
+            omitted = len(combined_output) - 2 * keep
             combined_output = (
-                combined_output[:MAX_BASH_OUTPUT_CHARS]
-                + f"\n\n... [Output truncated: exceeded {MAX_BASH_OUTPUT_CHARS} characters]"
+                f"{combined_output[:keep]}\n\n"
+                f"... [Output truncated: {omitted} characters omitted] ...\n\n"
+                f"{combined_output[-keep:]}"
             )
 
         status = (

@@ -5,7 +5,7 @@ import math
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from core.types import Message
+    from parallax.core.types import Message
 
 
 class TokenEstimator:

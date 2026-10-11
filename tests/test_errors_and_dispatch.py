@@ -1,10 +1,10 @@
 import asyncio
 import time
 import pytest
-from core.agent import Agent
-from core.run import AgentRun
-from core.errors import ToolError
-from core.types import ToolCall
+from parallax.core.agent import Agent
+from parallax.core.run import AgentRun
+from parallax.core.errors import ToolError
+from parallax.core.types import ToolCall
 
 
 @pytest.mark.asyncio

@@ -23,24 +23,23 @@ The same runtime runs locally via CLI, in a desktop app, and behind a web API. N
 
 ## Current Status
 
-Phases 0–4 are complete (foundation, async runtime, coding tools, event streaming).
+Phases 0–5 are complete (foundation, async runtime, resilience, coding tools, event streaming, context engineering, and `src/parallax/` packaging).
 
 **What works today:**
-- Async `Agent` (reusable config) / `AgentRun` (one execution) separation
-- Parallel tool dispatch via `asyncio.TaskGroup`, per-tool timeout, iteration guard
-- Tool error handling: failures are returned to the model, never crash the run
-- Malformed model tool-arguments are reported back to the model as tool errors
-- `@tool`, `extract_schema()`, duplicate tool-name rejection
-- Sandboxed `LocalEnvironment` with `EditorTool`, `BashTool`, `SearchTool`
-- Event streaming: `Agent.run_stream()` with typed `EventType`s and a per-run `run_id`
-- Custom exception hierarchy in `errors.py`
-- 53 tests, pyright clean
+- Package Architecture: Standard `src/parallax/` distribution layout, installable in editable mode via `uv pip install -e .` with clean top-level exports (`from parallax import Agent, ContextConfig, ...`).
+- Async Runtime: Strict `Agent` (reusable config) / `AgentRun` (single execution) separation, parallel tool dispatch via `asyncio.TaskGroup`, per-tool timeout, iteration guard (`MAX_ITERATIONS = 30`).
+- LLM Layer & Resilience: Injectable `LLMClient` protocol, `OpenRouterClient` with lazy SDK init, exponential backoff with full jitter on 408/429/5xx and timeouts, unparseable model tool arguments handled gracefully as tool errors without crashing.
+- Coding Tools: Sandboxed `LocalEnvironment` preventing path escape (`validate_path`), `EditorTool` (`str_replace_editor`), `BashTool` (with 30,000 char head+tail truncation), and `SearchTool` (`search_code` with regex/directory filters).
+- Event Streaming: `Agent.run_stream()` emitting typed `AgentEvent`s (`RUN_STARTED`, `MODEL_STARTED`, `MODEL_COMPLETED`, `MODEL_RETRY`, `TOOL_STARTED`, `TOOL_COMPLETED`, `TOOL_FAILED`, `CONTEXT_COMPACTED`, `RUN_COMPLETED`, `RUN_FAILED`) with timestamps, latency, token usage, and per-run `run_id`.
+- Context Engineering: `core/context/` package with `TokenEstimator` (tiktoken + fallback), tool output windowing, auto-discovery of repo instructions (`AGENTS.md`, `CLAUDE.md`, `.parallax/`), and turn-atomic message compaction honoring tool-call pairings.
+- 131 automated unit & E2E tests, 0 pyright errors.
 
 **Next up:**
-- LLM resilience: injectable client, retries/backoff, token usage on events
-- Context engineering (Phase 5): compaction, tool-output truncation, repo instructions
-- Process-level timeouts/cancellation for bash (kill the process group)
-- Git tool, CLI, persistence, evals
+- Phase 14: Interactive CLI & Rich Terminal UX (`parallax` command and `parallax chat` via Typer + Rich)
+- Process-level termination for bash commands (killing process groups)
+- Phase 11: Local persistence with SQLite (`aiosqlite`)
+- Phase 8: Model Context Protocol (MCP) integration
+- Phase 9: Subagent delegation
 
 ---
 
@@ -174,15 +173,15 @@ Each module gets its own logger via `__name__`. The interface layer configures l
 
 ## Phase-by-Phase Roadmap
 
-### Phase 0 — Foundation ✅ (mostly done)
+### Phase 0 — Foundation ✅ Complete
 
-Project structure, `uv`, `pyproject.toml`, `dataclasses`, relative imports, clean module separation. **Done.** Minor remaining item: move to `src/` layout when packaging.
+Project structure, `uv`, `pyproject.toml`, `dataclasses`, relative imports, clean module separation, and migration to standard `src/parallax/` packaging layout. **Done.**
 
 ---
 
-### Phase 1 — Minimal Agent Runtime ✅ (mostly done)
+### Phase 1 — Minimal Agent Runtime ✅ Complete
 
-Core loop working. **Remaining items in this phase:**
+Core loop working with type validation, iteration guard, tool error containment, and schema extraction. **Done.**
 
 #### 1.1 Complete `types.py`
 
@@ -290,7 +289,9 @@ def run(self, user_input: str) -> AgentResult:
 
 ---
 
-### Phase 2 — Runtime Robustness
+### Phase 2 — Runtime Robustness ✅ Complete
+
+Async architecture, clean `Agent` / `AgentRun` state separation, injectable `LLMClient` protocol, `OpenRouterClient` lazy initialization, exponential backoff retries with full jitter on 408/429/5xx and timeouts, and malformed model argument recovery. **Done.**
 
 #### 2.1 Go async
 
@@ -377,64 +378,36 @@ async def _call_with_retry(self, messages, tools, max_retries=3):
 
 ---
 
-### Phase 3 — Coding Agent Tools
+### Phase 3 — Coding Agent Tools ✅ Complete
 
-The first real use-case. Build the tool set that lets the agent operate on a repository:
+Local sandboxing via `LocalEnvironment`, path validation (`validate_path`), `EditorTool` (`str_replace_editor`), `BashTool` (with 30,000 char head+tail truncation), and `SearchTool` (`search_code`). **Done.**
 
 | Tool | What it does | Implementation |
 |---|---|---|
-| `read_file(path)` | Read a file's contents | `pathlib.Path.read_text()` |
-| `write_file(path, content)` | Write/create a file | `pathlib.Path.write_text()` |
-| `edit_file(path, old, new)` | Replace text in a file | `str.replace()` + write |
-| `list_files(path, pattern)` | List files in a directory | `glob` / `pathlib` |
-| `search_code(query, path)` | Text/regex search across files | `grep` via subprocess or `ripgrep` |
-| `shell(command)` | Run a shell command | `asyncio.create_subprocess_exec()` |
-| `git(args)` | Run a git command | `asyncio.create_subprocess_exec()` |
-| `run_tests(command)` | Run the test suite | `asyncio.create_subprocess_exec()` |
-
-> [!CAUTION]
-> `shell` and `git` are dangerous. Without sandboxing, the agent can delete files, run arbitrary commands, and leak environment variables. Build these tools first behind an explicit allowlist or confirmation prompt, even before the full sandbox exists.
-
-Shell tool pattern with timeout:
-
-```python
-@tool
-async def shell(command: str) -> str:
-    """Run a shell command and return stdout + stderr."""
-    proc = await asyncio.create_subprocess_exec(
-        *command.split(),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
-    except asyncio.TimeoutError:
-        proc.kill()
-        return "Error: command timed out after 30 seconds"
-
-    return (stdout + stderr).decode()
-```
+| `str_replace_editor` | View, create, replace, insert, undo in files | `core/tools/editor.py` |
+| `bash` | Run shell commands with timeout & truncation | `core/tools/bash.py` |
+| `search_code` | Text and regex search with line numbers | `core/tools/search.py` |
 
 ---
 
-### Phase 4 — Events and Streaming
+### Phase 4 — Events and Streaming ✅ Complete
 
-The runtime becomes event-driven. Every significant action emits an event. Interfaces subscribe to the event stream.
+Full event-driven runtime via `agent.run_stream(task)` with typed `AgentEvent`s, `run_id`, latency and token instrumentation. **Done.**
 
 ```python
 from enum import Enum
 from dataclasses import dataclass
 
-class EventType(Enum):
+class EventType(str, Enum):
     RUN_STARTED = "run_started"
     MODEL_STARTED = "model_started"
-    MODEL_DELTA = "model_delta"         # streaming token
     MODEL_COMPLETED = "model_completed"
+    MODEL_RETRY = "model_retry"
     TOOL_STARTED = "tool_started"
     TOOL_COMPLETED = "tool_completed"
     TOOL_FAILED = "tool_failed"
+    CONTEXT_COMPACTED = "context_compacted"
     RUN_COMPLETED = "run_completed"
-    RUN_CANCELLED = "run_cancelled"
     RUN_FAILED = "run_failed"
 
 @dataclass
@@ -442,24 +415,14 @@ class AgentEvent:
     type: EventType
     data: dict
     timestamp: float
+    run_id: str
 ```
-
-Streaming API:
-```python
-async for event in agent.run_stream("Fix the auth tests"):
-    if event.type == EventType.MODEL_DELTA:
-        print(event.data["delta"], end="", flush=True)
-    elif event.type == EventType.TOOL_STARTED:
-        print(f"\n[calling {event.data['name']}...]")
-    elif event.type == EventType.RUN_COMPLETED:
-        print("\nDone.")
-```
-
-The CLI renders these in the terminal. The web API streams them over SSE. The desktop app renders them in a UI. **The runtime doesn't know or care which.**
 
 ---
 
-### Phase 5 — Context Engineering
+### Phase 5 — Context Engineering ✅ Complete
+
+`core/context/` package with `TokenEstimator` (tiktoken + fallback), tool output windowing, auto-discovery of repo instructions (`AGENTS.md`, `CLAUDE.md`, `.parallax/`), turn-atomic message compaction honoring tool-call pairings, and `CONTEXT_COMPACTED` events. **Done.**
 
 When the agent reads many files and makes many tool calls, the context window fills up. This phase introduces a `ContextManager` that decides what goes into each model request.
 
@@ -705,43 +668,28 @@ Platform concerns never enter `core/`. The core receives an effective configurat
 
 ## Recommended Immediate Next Steps
 
-You are currently between Phase 1 and Phase 2. In order:
+Phases 0 through 5 are complete. The runtime is verified across 131 tests and packaged under `src/parallax/`. In order:
 
 ```
-1. Complete types.py
-   ├── Add field(default=None) to Message
-   ├── Add ToolCall dataclass
-   ├── Add ToolSchema dataclass
-   └── Add AgentResult dataclass
+1. Phase 14 — Interactive CLI & Terminal UX (Typer + Rich)
+   ├── Add typer and rich dependencies to pyproject.toml
+   ├── Create src/parallax/cli/ (app.py, console.py, renderer.py, repl.py)
+   ├── Single-shot execution: `parallax "Fix tests in auth"`
+   ├── Interactive REPL: `parallax chat`
+   └── Register entrypoint: [project.scripts] parallax = "parallax.cli.app:main"
 
-2. Add errors.py
-   └── ParallaxError, ToolNotFoundError, LLMError, MaxIterationsError, ToolExecutionError
+2. Process-Level Execution Control
+   └── Terminate process groups on bash timeout or cancellation
 
-3. Add ToolRegistry class to tool.py
-   └── encapsulates _functions dict and _schemas list
+3. Phase 11 — Local Persistence (SQLite / aiosqlite)
+   ├── Event-driven session and checkpoint store
+   └── Resume past runs: `parallax session resume <id>`
 
-4. Add iteration guard to Agent.run()
-   └── raise MaxIterationsError after N iterations
+4. Phase 8 — Model Context Protocol (MCP) Integration
+   └── Connect external MCP servers to agent tool registry
 
-5. Add tool error handling
-   └── wrap dispatch in try/except, return error string to LLM
-
-6. Go async
-   └── Agent.run() → async def run()
-   └── call_llm() → async (use send_async)
-   └── tools that do I/O → asyncio.to_thread()
-
-7. Separate Agent from AgentRun
-   └── Agent = configuration
-   └── AgentRun = one execution, holds messages
-
-8. Write first tests
-   └── test extract_schema()
-   └── test ToolRegistry
-   └── test Agent loop with a mock LLM
-
-9. Build coding tools
-   └── read_file, write_file, list_files, search_code, shell, run_tests
+5. Phase 9 — Subagents & Parallel Orchestration
+   └── Specialized child agents (Researcher, Coder, Tester) with parent_run_id
 ```
 
 ---

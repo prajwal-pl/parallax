@@ -900,3 +900,50 @@ The README you wrote for this project is already better than most AI engineer po
 ### Tree-sitter
 - [Tree-sitter Python bindings](https://github.com/tree-sitter/py-tree-sitter)
 - [tree-sitter-python grammar](https://github.com/tree-sitter/tree-sitter-python)
+
+---
+
+## Section 10: Applied Engineering Log & Architecture Lessons (Phases 0–5 Milestone)
+
+As Parallax progressed from design to an operational headless runtime, several practical engineering challenges emerged. These lessons serve as real-world agent engineering patterns:
+
+### 10.1 Structured Concurrency & Event Streaming
+- **The Challenge**: Agents need to run long-running tool execution loops while concurrently streaming fine-grained events (`AgentEvent`) to consumer interfaces (CLI, Web, Desktop) without blocking or dropping events.
+- **The Solution**:
+  - Using modern `asyncio.TaskGroup` ensures structured lifecycle management: if the agent loop crashes or gets cancelled, worker tasks are cleanly terminated without orphan coroutines.
+  - Event distribution uses an `asyncio.Queue` paired with an immutable sentinel object (`_SENTINEL = object()`). The runner signals termination by placing the sentinel on the queue, allowing consumer streams (`run_stream()`) to cleanly exit their `while True` generator loops without polling or busy-waiting.
+
+### 10.2 Resilient LLM Layer: Beyond Simple Retries
+- **The Challenge**: Remote LLM providers (OpenAI, OpenRouter) frequently throw rate limits (`HTTP 429`), server gateway errors (`502`, `503`, `504`), and intermittent connection timeouts. Naive retries risk creating "thundering herd" bottlenecks.
+- **The Solution**:
+  - Implemented **full jitter exponential backoff**:
+    $$\text{delay} = \min(\text{max\_delay}, \text{base\_delay} \times 2^{\text{attempt}}) \times \text{uniform}(0.5, 1.0)$$
+  - Inspected HTTP response headers (`retry-after`) to honor provider-directed pauses.
+  - Classified errors strictly: transient errors (429, 5xx, timeouts) trigger retries; deterministic client errors (400 bad request, 401 unauthorized, 403 forbidden) fail fast as typed domain errors (`AuthenticationError`, `ContextLengthExceededError`, `ModelProviderError`) to prevent burning token budgets and retry allowances.
+
+### 10.3 Context Engineering & Turn-Atomic History Compaction
+- **The Challenge**:
+  - The OpenAI chat completions API enforces strict message pairing: any `assistant` message containing `tool_calls` **must** be immediately followed by `tool` result messages matching every `tool_call_id`.
+  - Splitting or truncating messages naively (e.g. slicing the message array from the middle) breaks this pairing, resulting in immediate `HTTP 400: Invalid parameter: 'messages'` errors.
+- **The Solution**:
+  - **Turn Atomicity**: Messages are grouped into indivisible conversational turns (`assistant` tool calls + all corresponding `tool` outputs).
+  - During history compaction, the compactor never cuts inside a turn. It preserves:
+    1. System instructions and repository guidelines (`AGENTS.md`).
+    2. A synthetic summary message capturing compacted history.
+    3. The most recent complete atomic turns.
+  - **Lazy Tokenizer Loading**: Initializing `tiktoken.get_encoding("cl100k_base")` synchronously at startup added ~8 seconds of overhead across fast-running test suites. Making tokenizer acquisition lazy (deferred until the first token count computation) cut test suite execution time from ~8.9s down to <0.9s.
+
+### 10.4 Safe Tool Windowing & Execution
+- **The Challenge**: Long-running commands (e.g. running test suites or builds) can generate tens of thousands of lines of output. Truncating bash output only from the head (`output[:limit]`) drops the summary, final exit status, and Python tracebacks, leaving the agent blind to why a command failed.
+- **The Solution**:
+  - Implemented **Head + Tail Windowing**: Bash output beyond 30,000 characters retains the initial 15,000 characters (what command started and its setup) and the trailing 15,000 characters (the tracebacks, test statistics, and exit status), joined by an explicit omission marker `\n\n... [output truncated: N characters omitted] ...\n\n`.
+  - Added execution timeouts, non-zero exit code capture without runtime crashes, and path validation inside the execution environment.
+
+### 10.5 Headless Architecture & Package Decoupling
+- **The Challenge**: A common architectural failure in agent projects is coupling terminal UI code (like `typer` or `rich`) into the core agent loop, making it impossible to reuse the engine in desktop or web applications.
+- **The Solution**:
+  - Adopted a clean `src/` layout: `src/parallax` is the standalone package.
+  - Placed the entire headless engine under `parallax.core` with zero UI dependencies.
+  - Top-level `parallax/__init__.py` provides clean public exports (`Agent`, `LocalEnvironment`, `BashTool`, `EventType`).
+  - Next consumers (CLI in Phase 14, API/Web in Phase 15, Desktop in Phase 16) import from `parallax` without ever contaminating core runtime logic.
+

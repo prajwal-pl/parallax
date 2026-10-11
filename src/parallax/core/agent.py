@@ -1,12 +1,12 @@
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
-from core.context import ContextConfig, ContextManager
-from core.errors import DuplicateToolError
-from core.llm import LLMClient, OpenRouterClient, RetryPolicy
-from core.run import AgentRun
-from core.tool import extract_schema
-from core.types import AgentEvent, AgentResult
+from parallax.core.context import ContextConfig, ContextManager
+from parallax.core.errors import DuplicateToolError
+from parallax.core.llm import LLMClient, OpenRouterClient, RetryPolicy
+from parallax.core.run import AgentRun
+from parallax.core.tool import extract_schema
+from parallax.core.types import AgentEvent, AgentResult
 
 
 class Agent:

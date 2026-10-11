@@ -4,10 +4,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from core.agent import Agent
-from core.errors import ToolError
-from core.run import AgentRun
-from core.types import AgentResult, EventType, LLMResponse, ToolCall
+from parallax.core.agent import Agent
+from parallax.core.errors import ToolError
+from parallax.core.run import AgentRun
+from parallax.core.types import AgentResult, EventType, LLMResponse, ToolCall
 
 
 @pytest.mark.asyncio

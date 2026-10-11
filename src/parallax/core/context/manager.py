@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from core.context.compactor import compact
-from core.context.instructions import load_instructions
-from core.context.tokens import TokenEstimator
-from core.context.truncation import truncate_output
-from core.types import Message
+from parallax.core.context.compactor import compact
+from parallax.core.context.instructions import load_instructions
+from parallax.core.context.tokens import TokenEstimator
+from parallax.core.context.truncation import truncate_output
+from parallax.core.types import Message
 
 
 @dataclass

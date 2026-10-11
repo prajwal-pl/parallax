@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.context import (
+from parallax.core.context import (
     ContextConfig,
     ContextManager,
     TokenEstimator,
@@ -12,8 +12,8 @@ from core.context import (
     load_instructions,
     truncate_output,
 )
-from core.context.compactor import SUMMARY_START, build_digest, merge_summary
-from core.types import Message, ToolCall
+from parallax.core.context.compactor import SUMMARY_START, build_digest, merge_summary
+from parallax.core.types import Message, ToolCall
 
 
 def tc(id: str, name: str = "bash", **args) -> ToolCall:

@@ -7,18 +7,18 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from core.agent import Agent
+    from parallax.core.agent import Agent
 
-from core.errors import (
+from parallax.core.errors import (
     LLMExecutionError,
     MaxIterationsError,
     ToolError,
     ToolExecutionError,
     ToolNotFoundError,
 )
-from core.context import UsageBaseline
-from core.llm import backoff_delay, is_retryable
-from core.types import AgentEvent, AgentResult, EventType, LLMResponse, Message
+from parallax.core.context import UsageBaseline
+from parallax.core.llm import backoff_delay, is_retryable
+from parallax.core.types import AgentEvent, AgentResult, EventType, LLMResponse, Message
 
 
 class AgentRun:

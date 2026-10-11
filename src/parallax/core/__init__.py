@@ -2,6 +2,7 @@ from .agent import Agent
 from .context import ContextConfig, ContextManager
 from .environment import Environment, ExecResult, LocalEnvironment
 from .errors import (
+    DuplicateToolError,
     LLMExecutionError,
     MaxIterationsError,
     ParallaxError,
@@ -9,7 +10,7 @@ from .errors import (
     ToolExecutionError,
     ToolNotFoundError,
 )
-from .llm import call_llm
+from .llm import LLMClient, OpenRouterClient, RetryPolicy, call_llm
 from .tool import extract_schema, tool
 from .tools.bash import BashTool
 from .tools.editor import EditorTool
@@ -24,4 +25,5 @@ from .types import (
     ToolFunction,
     ToolParameters,
     ToolSchema,
+    Usage,
 )

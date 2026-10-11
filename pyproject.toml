@@ -1,7 +1,7 @@
 [project]
 name = "parallax"
 version = "0.1.0"
-description = "Add your description here"
+description = "Modular, model-agnostic AI coding agent runtime"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -19,5 +19,5 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
+pythonpath = ["src"]
 asyncio_mode = "auto"
