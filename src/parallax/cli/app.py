@@ -8,7 +8,10 @@ from typing import Annotated, Optional
 
 import typer
 from dotenv import load_dotenv
+from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
+
 
 from parallax import (
     Agent,
@@ -195,29 +198,39 @@ def tools_cmd():
     agent = build_default_agent()
     console = get_console()
 
-    table = Table(
-        title="[brand]parallax tools[/brand] [muted]· active runtime tools[/muted]",
-        title_justify="left",
-        box=PANEL_BOX,
-        border_style="border",
-        show_header=True,
-        header_style="bold #818cf8",
-        padding=(0, 1),
-    )
-    table.add_column("name", style="tool.name", no_wrap=True)
-    table.add_column("description", style="muted")
-    table.add_column("parameters", style="meta")
+    pills = Text()
+    pills.append(" Tools ", style="bold white on #4f46e5")
+    pills.append(f"  {len(agent.tool_schemas)} active runtime tools  ", style="bold #93c5fd on #1e293b")
+    console.print()
+    console.print(pills)
+    console.print()
 
     for schema in agent.tool_schemas:
         func = schema.get("function", {})
         name = func.get("name", "")
-        desc = func.get("description", "")
+        desc = func.get("description", "").splitlines()[0] if func.get("description") else ""
         params = func.get("parameters", {}).get("properties", {})
-        param_names = ", ".join(params.keys()) if params else "none"
-        table.add_row(name, desc.splitlines()[0] if desc else "", param_names)
 
-    console.print()
-    console.print(table)
+        content = Text()
+        content.append(f"{desc}\n\n", style="muted")
+        content.append("Parameters: ", style="bold #94a3b8")
+        if params:
+            for param_name in params.keys():
+                content.append(f" {param_name} ", style="bold #93c5fd on #1e293b")
+                content.append(" ")
+        else:
+            content.append("none", style="dim")
+        content.append("\n")
+
+        panel = Panel(
+            content,
+            title=f"[bold #818cf8]{name}[/bold #818cf8]",
+            title_align="left",
+            box=PANEL_BOX,
+            border_style="#334155",
+            padding=(0, 2),
+        )
+        console.print(panel)
     console.print()
 
 

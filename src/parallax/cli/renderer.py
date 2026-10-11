@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import time
 from typing import Any
-from rich.console import Console, RenderableType
+from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.status import Status
-from rich.syntax import Syntax
 from rich.text import Text
 
 from parallax.cli.console import get_console
@@ -18,7 +17,6 @@ from parallax.cli.theme import (
     ICON_COMPACT,
     ICON_ERROR,
     ICON_LINE_V,
-    ICON_RETRY,
     ICON_SUCCESS,
     PANEL_BOX,
 )
@@ -31,10 +29,17 @@ class CliRenderer:
     modern, minimalist terminal interface without emojis.
     """
 
-    def __init__(self, console: Console | None = None, verbose: bool = False, quiet: bool = False):
+    def __init__(
+        self,
+        console: Console | None = None,
+        verbose: bool = False,
+        quiet: bool = False,
+        is_interactive: bool = False,
+    ):
         self.console = console or get_console()
         self.verbose = verbose
         self.quiet = quiet
+        self.is_interactive = is_interactive
 
         self._active_status: Status | None = None
         self._run_start_time: float = 0.0
@@ -44,7 +49,7 @@ class CliRenderer:
         self._final_content: str = ""
 
     def start_spinner(self, status_text: str) -> None:
-        """Start or update the typing/processing indicator."""
+        """Start or update the typing/processing indicator in place."""
         if self.quiet:
             return
         if self._active_status is None:
@@ -87,9 +92,9 @@ class CliRenderer:
         self._iterations = 0
         self._final_content = ""
 
-        if not self.quiet:
+        # Only echo task in single-shot mode (interactive mode already typed it at prompt)
+        if not self.is_interactive and not self.quiet:
             task = data.get("task", "")
-            # Print subtle task marker
             msg = Text()
             msg.append(f"{ICON_CHEVRON} ", style="user")
             msg.append(task, style="bold white")
@@ -100,31 +105,24 @@ class CliRenderer:
     def _on_model_started(self, data: dict[str, Any]) -> None:
         self._iterations = data.get("iteration", self._iterations)
         model = data.get("model", "")
-        # Animated indicator without emojis
-        self.start_spinner(f"[dim #94a3b8]generating[/dim #94a3b8] [muted]· {model} · iteration {self._iterations}[/muted]")
+        self.start_spinner(
+            f"[dim #94a3b8]generating[/dim #94a3b8] [muted]· {model} · turn {self._iterations}[/muted]"
+        )
 
     def _on_model_retry(self, data: dict[str, Any]) -> None:
-        self.stop_spinner()
+        # Keep retries completely inside the live spinner without noisy console line spam
         attempt = data.get("attempt", 1)
         delay = data.get("delay", 0.0)
-        error = data.get("error", "Transient error")
-
-        # Clean warning notice
-        msg = Text()
-        msg.append(f"  {ICON_RETRY} ", style="status.warning")
-        msg.append(f"rate limit / network pause ({delay:.1f}s) ", style="status.warning")
-        msg.append(f"{ICON_BULLET} attempt {attempt} {ICON_BULLET} {error}", style="muted")
-        self.console.print(msg)
-
-        # Resume spinner
-        self.start_spinner("[dim #94a3b8]waiting to retry[/dim #94a3b8]")
+        self.start_spinner(
+            f"[dim #94a3b8]rate limit pause[/dim #94a3b8] [muted]· retrying in {delay:.1f}s (attempt {attempt})[/muted]"
+        )
 
     def _on_model_completed(self, data: dict[str, Any]) -> None:
         self.stop_spinner()
         content = data.get("content")
         tool_count = data.get("tool_calls_count", 0)
 
-        # If model generated intermediate text before calling tools, show it subtly
+        # Show preliminary assistant thoughts subtly before executing tools
         if content and tool_count > 0 and not self.quiet:
             for line in content.strip().splitlines():
                 if line.strip():
@@ -138,7 +136,7 @@ class CliRenderer:
         self._tool_calls_count += 1
 
         summary = self._format_tool_action(tool_name, arguments)
-        self.start_spinner(f"[dim #94a3b8]executing[/dim #94a3b8] [tool.name]{summary}[/tool.name]")
+        self.start_spinner(f"[dim #94a3b8]running[/dim #94a3b8] [tool.name]{summary}[/tool.name]")
 
     def _on_tool_completed(self, data: dict[str, Any]) -> None:
         self.stop_spinner()
@@ -151,14 +149,12 @@ class CliRenderer:
         if self.quiet:
             return
 
-        # Success receipt line
         receipt = Text()
         receipt.append(f"  {ICON_SUCCESS} ", style="status.success")
         receipt.append(tool_name, style="tool.name")
-        receipt.append(f" {ICON_BULLET} {elapsed:.2f}s", style="muted")
+        receipt.append(f" [muted]· {elapsed:.2f}s[/muted]", style="muted")
         self.console.print(receipt)
 
-        # Show bounded output preview
         self._render_tool_output(result)
 
     def _on_tool_failed(self, data: dict[str, Any]) -> None:
@@ -175,10 +171,9 @@ class CliRenderer:
         receipt = Text()
         receipt.append(f"  {ICON_ERROR} ", style="status.error")
         receipt.append(tool_name, style="tool.name")
-        receipt.append(f" {ICON_BULLET} failed {ICON_BULLET} {elapsed:.2f}s", style="status.error")
+        receipt.append(f" [status.error]failed · {elapsed:.2f}s[/status.error]", style="status.error")
         self.console.print(receipt)
 
-        # Render error box indented
         err_text = Text()
         for line in error.strip().splitlines()[:6]:
             err_text.append(f"    {ICON_LINE_V} {line}\n", style="status.error")
@@ -203,7 +198,6 @@ class CliRenderer:
         duration = max(0.0, time.time() - self._run_start_time)
         self._final_content = data.get("content", "")
 
-        # Render final markdown response
         if self._final_content:
             self.console.print()
             role_header = Text()
@@ -214,7 +208,6 @@ class CliRenderer:
             self.console.print(Markdown(self._final_content))
             self.console.print()
 
-        # Render sleek execution summary footer
         if not self.quiet:
             summary = (
                 f"completed in {duration:.1f}s {ICON_BULLET} "
@@ -226,17 +219,66 @@ class CliRenderer:
 
     def _on_run_failed(self, data: dict[str, Any]) -> None:
         self.stop_spinner()
-        error = data.get("error", "Unknown error")
+        raw_error = data.get("error", "Unknown error")
         duration = max(0.0, time.time() - self._run_start_time)
+
+        self._render_abstracted_error(raw_error, duration)
+
+    def _render_abstracted_error(self, raw_error: str, duration: float) -> None:
+        """Abstract raw provider tracebacks into clean, high-signal actionable cards."""
+        lower_err = raw_error.lower()
+
+        if "free-models-per-day" in lower_err or "rate limit" in lower_err or "429" in lower_err:
+            title = "Provider Quota Limit"
+            summary = "The daily free request quota for this model on OpenRouter has been reached."
+            suggestions = [
+                ("Switch model", "/model meta-llama/llama-3.3-70b-instruct:free"),
+                ("Add credits", "openrouter.ai/credits to unlock higher rate limits"),
+            ]
+        elif "unauthorized" in lower_err or "401" in lower_err or "invalid api key" in lower_err:
+            title = "Authentication Failure"
+            summary = "The configured provider API key is missing or invalid."
+            suggestions = [
+                ("Set API key", "Ensure OPENROUTER_API_KEY is configured in your .env file"),
+            ]
+        elif "context length" in lower_err or "maximum context" in lower_err:
+            title = "Context Limit Exceeded"
+            summary = "The conversation history exceeds the model's token capacity."
+            suggestions = [
+                ("Compact history", "/compact to summarize older conversation turns"),
+                ("Clear session", "/clear to start a fresh session context"),
+            ]
+        elif "timeout" in lower_err or "timed out" in lower_err:
+            title = "Connection Timeout"
+            summary = "The network request to the model provider timed out."
+            suggestions = [
+                ("Retry request", "Send your task again or verify network connectivity"),
+            ]
+        else:
+            title = "Execution Failed"
+            summary = "The agent encountered an unrecoverable provider failure."
+            suggestions = [
+                ("Diagnostics", "Run 'parallax doctor' to inspect environment health"),
+            ]
+
+        content = Text()
+        content.append(f"{summary}\n\n", style="#f87171")
+        content.append("Suggestions:\n", style="bold #94a3b8")
+        for label, action in suggestions:
+            content.append(f"  • {label}: ", style="muted")
+            content.append(f"{action}\n", style="tool.name")
+
+        if self.verbose:
+            content.append(f"\nTechnical details: {raw_error}\n", style="dim #64748b")
 
         self.console.print()
         panel = Panel(
-            Text(error, style="status.error"),
-            title=f"[status.error]{ICON_ERROR} run failed ({duration:.1f}s)[/status.error]",
+            content,
+            title=f"[bold #f87171]{ICON_ERROR} {title} ({duration:.1f}s)[/bold #f87171]",
             title_align="left",
             box=PANEL_BOX,
-            border_style="status.error",
-            padding=(0, 1),
+            border_style="#ef4444",
+            padding=(0, 2),
         )
         self.console.print(panel)
         self.console.print()
@@ -253,7 +295,6 @@ class CliRenderer:
         elif name == "search":
             query = args.get("query", "")
             return f'search "{query[:40]}"'
-        # Generic tool fallback
         arg_str = ", ".join(f"{k}={v!r}" for k, v in list(args.items())[:2])
         return f"{name}({arg_str})"
 
@@ -277,7 +318,6 @@ class CliRenderer:
             display_lines.extend(lines[-tail_count:])
 
         for line in display_lines:
-            # Color diff lines if present
             if line.startswith("+") and not line.startswith("+++"):
                 self.console.print(f"    [muted]{ICON_LINE_V}[/muted] [diff.add]{line}[/diff.add]")
             elif line.startswith("-") and not line.startswith("---"):

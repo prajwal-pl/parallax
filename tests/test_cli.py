@@ -104,12 +104,35 @@ def test_renderer_run_failed():
     renderer.handle_event(AgentEvent(type=EventType.RUN_FAILED, data={"error": "Fatal provider failure"}))
 
     output = console.export_text()
-    assert "run failed" in output
-    assert "Fatal provider failure" in output
+    assert "Execution Failed" in output
+    assert "Suggestions" in output
+
+
+def test_renderer_abstracted_rate_limit():
+    console = Console(record=True, theme=PARALLAX_THEME)
+    renderer = CliRenderer(console=console)
+
+    renderer.handle_event(AgentEvent(type=EventType.RUN_FAILED, data={"error": "Rate limit exceeded: free-models-per-day"}))
+
+    output = console.export_text()
+    assert "Provider Quota Limit" in output
+    assert "Switch model" in output
+    assert "/model" in output
+
+
+def test_renderer_interactive_no_duplicate_echo():
+    console = Console(record=True, theme=PARALLAX_THEME)
+    renderer = CliRenderer(console=console, is_interactive=True)
+
+    renderer.handle_event(AgentEvent(type=EventType.RUN_STARTED, data={"task": "test prompt"}))
+    output = console.export_text()
+    # In interactive mode, task should not be echoed again
+    assert "» test prompt" not in output
 
 
 @pytest.mark.asyncio
-async def test_repl_slash_commands():
+async def test_repl_slash_commands(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test12345678")
     agent = build_default_agent()
     console = Console(record=True, theme=PARALLAX_THEME)
     repl = InteractiveRepl(agent=agent, console=console)
@@ -120,20 +143,111 @@ async def test_repl_slash_commands():
     assert await repl._handle_command("/model") is None
     assert await repl._handle_command("/model new/custom-model") is None
     assert agent.model == "new/custom-model"
+    output_before_clear = console.export_text()
+    assert "switched model from" in output_before_clear
+
     # Test /context
     assert await repl._handle_command("/context") is None
     # Test /tools
     assert await repl._handle_command("/tools") is None
+    # Test /doctor
+    assert await repl._handle_command("/doctor") is None
     # Test /compact (empty history)
     assert await repl._handle_command("/compact") is None
-    # Test /clear
+
+    # Test aliases
+    assert await repl._handle_command("/q") == "exit"
+    assert await repl._handle_command("/h") is None
+    assert await repl._handle_command("/c") is None
+    assert await repl._handle_command("/t") is None
+    assert await repl._handle_command("/d") is None
+
+    # Test /cls (which clears the console and re-renders the hero banner)
     repl.messages = [Message(role="user", content="hello")]
-    assert await repl._handle_command("/clear") is None
+    assert await repl._handle_command("/cls") is None
     assert len(repl.messages) == 0
-    # Test /exit
-    assert await repl._handle_command("/exit") == "exit"
-    assert await repl._handle_command("/quit") == "exit"
+
+    output_after_clear = console.export_text()
+    assert "PARALLAX" in output_after_clear
+
+    # Test /help topic filtering and ? alias
+    console_help = Console(record=True, theme=PARALLAX_THEME)
+    repl_help = InteractiveRepl(agent=agent, console=console_help)
+
+    assert await repl_help._handle_command("/help") is None
+    out_all = console_help.export_text()
+    assert "parallax guide" in out_all
+    assert "Commands" in out_all
+    assert "Keyboard Shortcuts" in out_all
+
+    console_cmd = Console(record=True, theme=PARALLAX_THEME)
+    repl_cmd = InteractiveRepl(agent=agent, console=console_cmd)
+    assert await repl_cmd._handle_command("/help commands") is None
+    out_cmd = console_cmd.export_text()
+    assert "command reference" in out_cmd
+    assert "/model" in out_cmd
+
+    console_keys = Console(record=True, theme=PARALLAX_THEME)
+    repl_keys = InteractiveRepl(agent=agent, console=console_keys)
+    assert await repl_keys._handle_command("/help shortcuts") is None
+    out_keys = console_keys.export_text()
+    assert "keyboard shortcuts" in out_keys
+    assert "Ctrl + C" in out_keys
+
+    console_err = Console(record=True, theme=PARALLAX_THEME)
+    repl_err = InteractiveRepl(agent=agent, console=console_err)
+    assert await repl_err._handle_command("/help unknown") is None
+    out_err = console_err.export_text()
+    assert "unknown help topic 'unknown'" in out_err
+
+    assert await repl_help._handle_command("?") is None
+
+
+def test_slash_command_completer():
+    from prompt_toolkit.completion import CompleteEvent
+    from prompt_toolkit.document import Document
+    from parallax.cli.repl import SlashCommandCompleter
+
+    completer = SlashCommandCompleter()
+    doc_m = Document(text="/m", cursor_position=2)
+    completions_m = [c.text for c in completer.get_completions(doc_m, CompleteEvent(text_inserted=False))]
+    assert "/model" in completions_m
+
+    doc_h = Document(text="/h", cursor_position=2)
+    completions_h = [c.text for c in completer.get_completions(doc_h, CompleteEvent(text_inserted=False))]
+    assert "/help" in completions_h
+    assert "/help commands" in completions_h
+    assert "/help shortcuts" in completions_h
+
+
+@pytest.mark.asyncio
+async def test_repl_run_async_prompt():
+    import warnings
+    agent = build_default_agent()
+    console = Console(record=True, theme=PARALLAX_THEME)
+    repl = InteractiveRepl(agent=agent, console=console)
+
+    # Mock session prompt_async to return /q to test clean shutdown without warnings
+    mock_session = AsyncMock()
+    mock_session.prompt_async.return_value = "/q"
+
+    with patch("sys.stdin.isatty", return_value=True), patch.object(
+        repl, "_get_prompt_session", return_value=mock_session
+    ):
+        with warnings.catch_warnings(record=True) as recorded_warnings:
+            warnings.simplefilter("always")
+            await repl.run()
+
+            # Ensure no RuntimeWarning regarding unawaited Application.run_async
+            runtime_warnings = [
+                w for w in recorded_warnings
+                if issubclass(w.category, RuntimeWarning) and "run_async" in str(w.message)
+            ]
+            assert len(runtime_warnings) == 0
 
     output = console.export_text()
-    assert "switched model from" in output
-    assert "conversation history cleared" in output
+    assert "PARALLAX" in output
+    assert "session ended" in output
+
+
+

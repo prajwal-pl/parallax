@@ -5,7 +5,9 @@ description = "Modular, model-agnostic AI coding agent runtime"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "groq>=1.7.0",
     "openrouter>=1.2.17",
+    "prompt-toolkit>=3.0.53",
     "pyright>=1.1.414",
     "python-dotenv>=1.2.3",
     "rich>=15.0.0",
