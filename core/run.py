@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
@@ -9,13 +10,14 @@ if TYPE_CHECKING:
     from core.agent import Agent
 
 from core.errors import (
+    LLMExecutionError,
     MaxIterationsError,
     ToolError,
     ToolExecutionError,
     ToolNotFoundError,
 )
-from core.llm import call_llm
-from core.types import AgentEvent, AgentResult, EventType, Message
+from core.llm import backoff_delay, is_retryable
+from core.types import AgentEvent, AgentResult, EventType, LLMResponse, Message
 
 
 class AgentRun:
@@ -97,6 +99,31 @@ class AgentRun:
 
         return Message(role="tool", content=str(result), tool_call_id=tool_call.id)
 
+    async def _call_model(self) -> LLMResponse:
+        """Call the LLM with a per-call timeout, retrying transient failures."""
+        policy = self.agent.retry
+        attempt = 0
+        while True:
+            try:
+                return await asyncio.wait_for(
+                    self.agent.llm.generate(
+                        self.agent.model, self.messages, self.agent.tool_schemas
+                    ),
+                    timeout=policy.call_timeout,
+                )
+            except Exception as e:
+                if not is_retryable(e) or attempt + 1 >= policy.max_attempts:
+                    raise LLMExecutionError(f"LLM call failed: {e}") from e
+                delay = backoff_delay(attempt, policy)
+                attempt += 1
+                await self._emit(
+                    EventType.MODEL_RETRY,
+                    attempt=attempt,
+                    delay=delay,
+                    error=str(e),
+                )
+                await asyncio.sleep(delay)
+
     MAX_ITERATIONS = 30
 
     async def execute(self) -> AgentResult:
@@ -115,15 +142,16 @@ class AgentRun:
                     model=self.agent.model,
                 )
 
-                response = await call_llm(
-                    model=self.agent.model,
-                    messages=self.messages,
-                    tools=self.agent.tool_schemas,
-                )
+                started = time.monotonic()
+                response = await self._call_model()
+                usage = response.usage
 
                 await self._emit(
                     EventType.MODEL_COMPLETED,
                     iterations=self.iterations,
+                    latency_ms=(time.monotonic() - started) * 1000,
+                    input_tokens=usage.input_tokens if usage else None,
+                    output_tokens=usage.output_tokens if usage else None,
                 )
 
                 if response.tool_calls:

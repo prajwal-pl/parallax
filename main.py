@@ -48,7 +48,22 @@ async def main():
                 )
 
             case EventType.MODEL_COMPLETED:
-                print("   Model Response Received.")
+                tokens = ""
+                if event.data.get("input_tokens") is not None:
+                    tokens = (
+                        f", {event.data.get('input_tokens')} in / "
+                        f"{event.data.get('output_tokens')} out tokens"
+                    )
+                print(
+                    f"   Model Response Received "
+                    f"({event.data.get('latency_ms', 0):.0f} ms{tokens})."
+                )
+
+            case EventType.MODEL_RETRY:
+                print(
+                    f"⏳ Retry {event.data.get('attempt')} in "
+                    f"{event.data.get('delay', 0):.1f}s: {event.data.get('error')}"
+                )
 
             case EventType.TOOL_STARTED:
                 print(f"🔧 Tool Started: {event.data.get('tool_name')}")

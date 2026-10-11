@@ -47,6 +47,7 @@ class EventType(str, Enum):
     RUN_STARTED = "run_started"
     MODEL_STARTED = "model_started"
     MODEL_COMPLETED = "model_completed"
+    MODEL_RETRY = "model_retry"
     TOOL_STARTED = "tool_started"
     TOOL_COMPLETED = "tool_completed"
     TOOL_FAILED = "tool_failed"
@@ -80,9 +81,16 @@ class ToolCall:
 
 
 @dataclass
+class Usage:
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+@dataclass
 class LLMResponse:
     content: str | None = None
     tool_calls: list[ToolCall] | None = None
+    usage: Usage | None = None
 
     def to_message(self) -> Message:
         if self.tool_calls:

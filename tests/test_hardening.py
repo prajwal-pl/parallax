@@ -58,7 +58,7 @@ async def test_malformed_arguments_reported_to_model_not_crash():
     )
     final = LLMResponse(content="recovered", tool_calls=None)
 
-    with patch("core.run.call_llm", new=AsyncMock(side_effect=[bad, final])):
+    with patch.object(agent.llm, "generate", new=AsyncMock(side_effect=[bad, final])):
         result = await agent.run("go")
 
     assert result.content == "recovered"
@@ -71,7 +71,7 @@ async def test_events_share_run_id_and_runs_differ():
     agent = Agent(model="m", system_prompt="s")
     resp = LLMResponse(content="ok", tool_calls=None)
 
-    with patch("core.run.call_llm", new=AsyncMock(return_value=resp)):
+    with patch.object(agent.llm, "generate", new=AsyncMock(return_value=resp)):
         first = [e async for e in agent.run_stream("a")]
         second = [e async for e in agent.run_stream("b")]
 

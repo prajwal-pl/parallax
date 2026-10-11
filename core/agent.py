@@ -2,15 +2,24 @@ from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from core.errors import DuplicateToolError
+from core.llm import LLMClient, OpenRouterClient, RetryPolicy
 from core.run import AgentRun
 from core.tool import extract_schema
 from core.types import AgentEvent, AgentResult
 
 
 class Agent:
-    def __init__(self, model: str, system_prompt: str):
+    def __init__(
+        self,
+        model: str,
+        system_prompt: str,
+        llm: LLMClient | None = None,
+        retry: RetryPolicy | None = None,
+    ):
         self.model = model
         self.system_prompt = system_prompt
+        self.llm: LLMClient = llm or OpenRouterClient()
+        self.retry = retry or RetryPolicy()
         self.tool_registry: dict[str, Callable[..., Any]] = {}
         self.tool_schemas: list[dict[str, Any]] = []
 

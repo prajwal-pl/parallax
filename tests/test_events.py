@@ -15,7 +15,7 @@ async def test_run_stream_simple_success():
     agent = Agent(model="mock-model", system_prompt="Test System")
     mock_response = LLMResponse(content="Hello there!", tool_calls=None)
 
-    with patch("core.run.call_llm", new=AsyncMock(return_value=mock_response)):
+    with patch.object(agent.llm, "generate", new=AsyncMock(return_value=mock_response)):
         events = [event async for event in agent.run_stream("Hello")]
 
     assert len(events) == 4
@@ -53,7 +53,7 @@ async def test_run_stream_with_tool_call():
     )
     resp_2 = LLMResponse(content="I greeted Bob.", tool_calls=None)
 
-    with patch("core.run.call_llm", new=AsyncMock(side_effect=[resp_1, resp_2])):
+    with patch.object(agent.llm, "generate", new=AsyncMock(side_effect=[resp_1, resp_2])):
         events = [event async for event in agent.run_stream("Greet Bob")]
 
     event_types = [e.type for e in events]
@@ -99,7 +99,7 @@ async def test_run_stream_with_tool_failure():
     )
     resp_2 = LLMResponse(content="Failed to run tool", tool_calls=None)
 
-    with patch("core.run.call_llm", new=AsyncMock(side_effect=[resp_1, resp_2])):
+    with patch.object(agent.llm, "generate", new=AsyncMock(side_effect=[resp_1, resp_2])):
         events = [event async for event in agent.run_stream("Run failing tool")]
 
     event_types = [e.type for e in events]
@@ -133,7 +133,7 @@ async def test_run_stream_parallel_tools():
     )
     resp_2 = LLMResponse(content="Done both", tool_calls=None)
 
-    with patch("core.run.call_llm", new=AsyncMock(side_effect=[resp_1, resp_2])):
+    with patch.object(agent.llm, "generate", new=AsyncMock(side_effect=[resp_1, resp_2])):
         events = [event async for event in agent.run_stream("Parallel test")]
 
     started_tools = {
@@ -165,7 +165,7 @@ async def test_run_stream_max_iterations_failed(monkeypatch):
         tool_calls=[ToolCall(id="call_loop", name="noop", arguments={})],
     )
 
-    with patch("core.run.call_llm", new=AsyncMock(return_value=infinite_resp)):
+    with patch.object(agent.llm, "generate", new=AsyncMock(return_value=infinite_resp)):
         events = [event async for event in agent.run_stream("Loop forever")]
 
     last_event = events[-1]
@@ -177,8 +177,9 @@ async def test_run_stream_max_iterations_failed(monkeypatch):
 async def test_run_stream_llm_exception():
     agent = Agent(model="mock-model", system_prompt="Test System")
 
-    with patch(
-        "core.run.call_llm",
+    with patch.object(
+        agent.llm,
+        "generate",
         new=AsyncMock(side_effect=RuntimeError("API Network Down")),
     ):
         events = [event async for event in agent.run_stream("Network issue")]
@@ -198,7 +199,7 @@ async def test_run_stream_early_break():
     mock_resp = LLMResponse(content="Answer", tool_calls=None)
 
     collected = []
-    with patch("core.run.call_llm", new=AsyncMock(return_value=mock_resp)):
+    with patch.object(agent.llm, "generate", new=AsyncMock(return_value=mock_resp)):
         async for event in agent.run_stream("Task"):
             collected.append(event)
             break
@@ -212,7 +213,7 @@ async def test_agent_run_backward_compatibility():
     agent = Agent(model="mock-model", system_prompt="Test System")
     mock_resp = LLMResponse(content="Final result text", tool_calls=None)
 
-    with patch("core.run.call_llm", new=AsyncMock(return_value=mock_resp)):
+    with patch.object(agent.llm, "generate", new=AsyncMock(return_value=mock_resp)):
         result = await agent.run("Perform run")
 
     assert isinstance(result, AgentResult)
