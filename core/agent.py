@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
+from core.context import ContextConfig, ContextManager
 from core.errors import DuplicateToolError
 from core.llm import LLMClient, OpenRouterClient, RetryPolicy
 from core.run import AgentRun
@@ -15,11 +16,13 @@ class Agent:
         system_prompt: str,
         llm: LLMClient | None = None,
         retry: RetryPolicy | None = None,
+        context: ContextConfig | None = None,
     ):
         self.model = model
         self.system_prompt = system_prompt
         self.llm: LLMClient = llm or OpenRouterClient()
         self.retry = retry or RetryPolicy()
+        self.context = ContextManager(context)
         self.tool_registry: dict[str, Callable[..., Any]] = {}
         self.tool_schemas: list[dict[str, Any]] = []
 

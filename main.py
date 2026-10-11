@@ -2,6 +2,7 @@ import asyncio
 from dotenv import load_dotenv
 
 from core.agent import Agent
+from core.context import ContextConfig
 from core.environment import LocalEnvironment
 from core.tools.bash import BashTool
 from core.tools.editor import EditorTool
@@ -19,6 +20,7 @@ async def main():
 
     agent = Agent(
         model="cohere/north-mini-code:free",
+        context=ContextConfig(workspace="."),
         system_prompt=(
             "You are an expert autonomous software engineer. "
             "You have access to:\n"
@@ -63,6 +65,13 @@ async def main():
                 print(
                     f"⏳ Retry {event.data.get('attempt')} in "
                     f"{event.data.get('delay', 0):.1f}s: {event.data.get('error')}"
+                )
+
+            case EventType.CONTEXT_COMPACTED:
+                print(
+                    f"🧹 Context compacted: {event.data.get('original_tokens')} → "
+                    f"{event.data.get('compacted_tokens')} tokens "
+                    f"({event.data.get('turns_summarized')} turns summarized)"
                 )
 
             case EventType.TOOL_STARTED:

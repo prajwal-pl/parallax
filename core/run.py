@@ -16,6 +16,7 @@ from core.errors import (
     ToolExecutionError,
     ToolNotFoundError,
 )
+from core.context import UsageBaseline
 from core.llm import backoff_delay, is_retryable
 from core.types import AgentEvent, AgentResult, EventType, LLMResponse, Message
 
@@ -25,11 +26,15 @@ class AgentRun:
         self.agent = agent
         self.user_input = user_input
         self.messages = [
-            Message(role="system", content=agent.system_prompt),
+            Message(
+                role="system",
+                content=agent.context.build_system_prompt(agent.system_prompt),
+            ),
             Message(role="user", content=user_input),
         ]
         self.iterations = 0
         self.run_id = uuid.uuid4().hex
+        self._baseline: UsageBaseline | None = None
         self._event_queue: asyncio.Queue[AgentEvent | None] = asyncio.Queue()
 
     async def _emit(self, event_type: EventType, **data):
@@ -97,7 +102,13 @@ class AgentRun:
                 error=str(result),
             )
 
-        return Message(role="tool", content=str(result), tool_call_id=tool_call.id)
+        # The event above carries the full result; only the copy kept in the
+        # conversation history is bounded.
+        return Message(
+            role="tool",
+            content=self.agent.context.truncate_tool_output(str(result)),
+            tool_call_id=tool_call.id,
+        )
 
     async def _call_model(self) -> LLMResponse:
         """Call the LLM with a per-call timeout, retrying transient failures."""
@@ -136,6 +147,14 @@ class AgentRun:
                         f"Agent exceeded {self.MAX_ITERATIONS} iterations and did not produce a result"
                     )
 
+                compacted, info = self.agent.context.maybe_compact(
+                    self.messages, self._baseline
+                )
+                if info is not None:
+                    self.messages = compacted
+                    self._baseline = None  # history changed; old count is stale
+                    await self._emit(EventType.CONTEXT_COMPACTED, **info)
+
                 await self._emit(
                     EventType.MODEL_STARTED,
                     iterations=self.iterations,
@@ -143,8 +162,11 @@ class AgentRun:
                 )
 
                 started = time.monotonic()
+                sent_count = len(self.messages)
                 response = await self._call_model()
                 usage = response.usage
+                if usage is not None:
+                    self._baseline = UsageBaseline(usage.input_tokens, sent_count)
 
                 await self._emit(
                     EventType.MODEL_COMPLETED,

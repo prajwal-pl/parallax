@@ -53,6 +53,7 @@ class EventType(str, Enum):
     TOOL_FAILED = "tool_failed"
     RUN_COMPLETED = "run_completed"
     RUN_FAILED = "run_failed"
+    CONTEXT_COMPACTED = "context_compacted"
 
 
 @dataclass
