@@ -9,6 +9,7 @@ dependencies = [
     "pyright>=1.1.414",
     "python-dotenv>=1.2.3",
     "tavily-python>=0.8.4",
+    "tiktoken>=0.14.0",
 ]
 
 [dependency-groups]

@@ -59,6 +59,7 @@ class AgentEvent:
     type: EventType
     data: dict = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
+    run_id: str = ""
 
 
 @dataclass
@@ -73,6 +74,9 @@ class ToolCall:
     id: str
     name: str
     arguments: dict
+    # Set when the model produced arguments we could not parse; the run loop
+    # reports this back to the model as a tool error instead of crashing.
+    error: str | None = None
 
 
 @dataclass

@@ -22,6 +22,23 @@ openrouter = OpenRouter(api_key=os.getenv("OPENROUTER_API_KEY"))
 #             return {"raw": raw}
 
 
+def parse_tool_arguments(raw: str | None) -> tuple[dict, str | None]:
+    """
+    Parse raw JSON tool arguments from the model.
+    Returns (arguments, error). On failure arguments is {} and error describes why,
+    so the model can be told and retry rather than crashing the run.
+    """
+    if raw is None or not raw.strip():
+        return {}, None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        return {}, f"Invalid JSON in tool arguments ({e}). Raw: {raw[:200]}"
+    if not isinstance(parsed, dict):
+        return {}, f"Tool arguments must be a JSON object, got {type(parsed).__name__}."
+    return parsed, None
+
+
 async def call_llm(model: str, messages: list, tools: list) -> LLMResponse:
     """
     Call the LLM with the given model, messages, and tools.
@@ -38,16 +55,21 @@ async def call_llm(model: str, messages: list, tools: list) -> LLMResponse:
     chat_response = response.content
     calls = response.tool_calls
 
+    tool_calls: list[ToolCall] | None = None
+    if calls:
+        tool_calls = []
+        for tc in calls:
+            arguments, error = parse_tool_arguments(tc.function.arguments)
+            tool_calls.append(
+                ToolCall(
+                    id=tc.id,
+                    name=tc.function.name,
+                    arguments=arguments,
+                    error=error,
+                )
+            )
+
     return LLMResponse(
         content=chat_response if isinstance(chat_response, str) else None,
-        tool_calls=[
-            ToolCall(
-                id=tc.id,
-                name=tc.function.name,
-                arguments=json.loads(tc.function.arguments),
-            )
-            for tc in calls
-        ]
-        if calls
-        else None,
+        tool_calls=tool_calls,
     )

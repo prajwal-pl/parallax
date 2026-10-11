@@ -23,27 +23,24 @@ The same runtime runs locally via CLI, in a desktop app, and behind a web API. N
 
 ## Current Status
 
-Phase 0 (Foundation) and Phase 1 (Minimal Agent Runtime) are partially complete.
+Phases 0–4 are complete (foundation, async runtime, coding tools, event streaming).
 
 **What works today:**
-- `@tool` decorator marks functions as tools
-- `extract_schema()` converts type hints + docstrings → JSON schema
-- `Agent` class: registers tools, runs the tool-call loop, dispatches, returns final answer
-- `call_llm()` in its own `llm.py` module
-- `core/__init__.py` with clean relative imports
-- System prompt initialized once in `__init__`
-- `response.model_dump()` for safe message serialization
-- `Message` dataclass started in `types.py`
+- Async `Agent` (reusable config) / `AgentRun` (one execution) separation
+- Parallel tool dispatch via `asyncio.TaskGroup`, per-tool timeout, iteration guard
+- Tool error handling: failures are returned to the model, never crash the run
+- Malformed model tool-arguments are reported back to the model as tool errors
+- `@tool`, `extract_schema()`, duplicate tool-name rejection
+- Sandboxed `LocalEnvironment` with `EditorTool`, `BashTool`, `SearchTool`
+- Event streaming: `Agent.run_stream()` with typed `EventType`s and a per-run `run_id`
+- Custom exception hierarchy in `errors.py`
+- 53 tests, pyright clean
 
-**What still needs to happen before moving forward:**
-- `Message` dataclass needs `field(default=None)` for optional fields
-- `ToolCall` and `ToolSchema` dataclasses not yet created
-- No `errors.py` custom exceptions
-- No `ToolRegistry` class (still raw dicts on `Agent`)
-- Runtime is synchronous — must become `async` before CLI/API can be built
-- No iteration guard on the `while True` loop
-- No tool error handling (a crashing tool crashes the whole agent)
-- No structured `AgentRun` / `AgentResult` separation from `Agent`
+**Next up:**
+- LLM resilience: injectable client, retries/backoff, token usage on events
+- Context engineering (Phase 5): compaction, tool-output truncation, repo instructions
+- Process-level timeouts/cancellation for bash (kill the process group)
+- Git tool, CLI, persistence, evals
 
 ---
 

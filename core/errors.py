@@ -18,5 +18,9 @@ class ToolNotFoundError(ParallaxError):
     pass
 
 
+class DuplicateToolError(ParallaxError):
+    pass
+
+
 class LLMExecutionError(ParallaxError):
     pass

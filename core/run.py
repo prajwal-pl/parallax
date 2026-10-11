@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
@@ -26,11 +27,12 @@ class AgentRun:
             Message(role="user", content=user_input),
         ]
         self.iterations = 0
+        self.run_id = uuid.uuid4().hex
         self._event_queue: asyncio.Queue[AgentEvent | None] = asyncio.Queue()
 
     async def _emit(self, event_type: EventType, **data):
         """Push an event to the queue"""
-        event = AgentEvent(type=event_type, data=data)
+        event = AgentEvent(type=event_type, data=data, run_id=self.run_id)
         await self._event_queue.put(event)
 
     async def _dispatch_tool(self, tool_call) -> Message:
@@ -45,6 +47,8 @@ class AgentRun:
         )
 
         try:
+            if tool_call.error:
+                raise ToolError(tool_call.error)
             if name not in self.agent.tool_registry:
                 raise ToolNotFoundError(f"Tool '{name}' not registered")
             func = self.agent.tool_registry[name]
