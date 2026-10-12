@@ -214,8 +214,8 @@ class EditorTool:
     @tool
     def str_replace_editor(
         self,
-        command: Literal["view", "create", "str_replace", "insert", "undo_edit"],
-        path: str,
+        command: Literal["view", "create", "str_replace", "insert", "undo_edit"] = "view",
+        path: str = ".",
         file_text: str | None = None,
         view_range: list[int] | None = None,
         old_str: str | None = None,
@@ -226,8 +226,8 @@ class EditorTool:
         Custom filesystem editor tool for viewing, creating, and modifying files.
 
         Args:
-            command: The command to run. Allowed options: view, create, str_replace, insert, undo_edit.
-            path: Relative path to file or directory within workspace.
+            command: The command to run (default: view). Allowed options: view, create, str_replace, insert, undo_edit.
+            path: Relative path to file or directory within workspace (default: ".").
             file_text: Required for 'create'. Content of the file to create.
             view_range: Optional for 'view'. Line range [start_line, end_line] (1-indexed). Use [start, -1] for until EOF.
             old_str: Required for 'str_replace'. The exact verbatim string to replace.

@@ -12,7 +12,15 @@ from parallax.core.errors import (
     ToolExecutionError,
     ToolNotFoundError,
 )
-from parallax.core.llm import LLMClient, OpenRouterClient, RetryPolicy, call_llm
+from parallax.core.llm import (
+    LLMClient,
+    OpenRouterClient,
+    GroqClient,
+    RetryPolicy,
+    call_llm,
+    fetch_groq_models,
+    fetch_openrouter_models,
+)
 from parallax.core.tool import extract_schema, tool
 from parallax.core.tools.bash import BashTool
 from parallax.core.tools.editor import EditorTool
@@ -49,6 +57,7 @@ __all__ = [
     "MaxIterationsError",
     "Message",
     "OpenRouterClient",
+    "GroqClient",
     "ParallaxError",
     "RetryPolicy",
     "SearchTool",
@@ -62,5 +71,7 @@ __all__ = [
     "Usage",
     "call_llm",
     "extract_schema",
+    "fetch_groq_models",
+    "fetch_openrouter_models",
     "tool",
 ]

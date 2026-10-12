@@ -10,7 +10,15 @@ from .errors import (
     ToolExecutionError,
     ToolNotFoundError,
 )
-from .llm import LLMClient, OpenRouterClient, RetryPolicy, call_llm
+from .llm import (
+    LLMClient,
+    OpenRouterClient,
+    GroqClient,
+    RetryPolicy,
+    call_llm,
+    fetch_groq_models,
+    fetch_openrouter_models,
+)
 from .tool import extract_schema, tool
 from .tools.bash import BashTool
 from .tools.editor import EditorTool

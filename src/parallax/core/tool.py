@@ -155,9 +155,10 @@ def extract_schema(func: Callable) -> ToolSchema:
         # Inject description from docstring, fallback to param_name
         schema_def["description"] = param_docs.get(param_name, param_name)
 
-        # Add default value if present and primitive
+        # Add default value if present and primitive. A null default contradicts the
+        # declared (non-null) type and makes strict provider validators reject calls.
         if param.default is not inspect.Parameter.empty and isinstance(
-            param.default, (str, int, float, bool, type(None))
+            param.default, (str, int, float, bool)
         ):
             schema_def["default"] = param.default
 

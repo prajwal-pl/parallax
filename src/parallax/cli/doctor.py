@@ -56,8 +56,10 @@ def run_doctor(console: Console | None = None) -> bool:
             f"Python {py_version} (requires Python 3.11+)",
         )
 
-    # 2. OpenRouter API Key
+    # 2. Provider API Keys
     openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+    groq_key = os.environ.get("GROQ_API_KEY")
+
     if openrouter_key:
         masked = f"{openrouter_key[:4]}...{openrouter_key[-4:]}" if len(openrouter_key) > 8 else "***"
         table.add_row(
@@ -66,12 +68,28 @@ def run_doctor(console: Console | None = None) -> bool:
             f"Configured ({masked})",
         )
     else:
-        all_healthy = False
         table.add_row(
             "OPENROUTER_API_KEY",
-            f"[status.error]{ICON_ERROR} missing[/status.error]",
-            "Required for model inference. Set in .env or environment.",
+            f"[status.warning]{ICON_WARNING} unset[/status.warning]",
+            "Optional if using Groq. Set in .env for OpenRouter inference.",
         )
+
+    if groq_key:
+        masked = f"{groq_key[:4]}...{groq_key[-4:]}" if len(groq_key) > 8 else "***"
+        table.add_row(
+            "GROQ_API_KEY",
+            f"[status.success]{ICON_SUCCESS} set[/status.success]",
+            f"Configured ({masked})",
+        )
+    else:
+        table.add_row(
+            "GROQ_API_KEY",
+            f"[status.warning]{ICON_WARNING} unset[/status.warning]",
+            "Optional if using OpenRouter. Set in .env for Groq inference.",
+        )
+
+    if not openrouter_key and not groq_key:
+        all_healthy = False
 
     # 3. Tavily API Key (Optional)
     tavily_key = os.environ.get("TAVILY_API_KEY")

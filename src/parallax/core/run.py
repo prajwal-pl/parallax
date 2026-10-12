@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -17,8 +18,21 @@ from parallax.core.errors import (
     ToolNotFoundError,
 )
 from parallax.core.context import UsageBaseline
-from parallax.core.llm import backoff_delay, is_retryable
+from parallax.core.context.shrink import (
+    extract_token_limit,
+    is_request_too_large,
+    shrink_to_fit,
+)
+from parallax.core.llm import (
+    GENERATION_ERROR_HINT,
+    backoff_delay,
+    extract_retry_delay,
+    is_generation_error,
+    is_retryable,
+)
 from parallax.core.types import AgentEvent, AgentResult, EventType, LLMResponse, Message
+
+MAX_GENERATION_RETRIES = 4
 
 
 class AgentRun:
@@ -67,8 +81,10 @@ class AgentRun:
             if name not in self.agent.tool_registry:
                 raise ToolNotFoundError(f"Tool '{name}' not registered")
             func = self.agent.tool_registry[name]
+            # Models often pass null for optional params; treat as "omitted".
+            call_args = {k: v for k, v in arguments.items() if v is not None}
             result = await asyncio.wait_for(
-                asyncio.to_thread(func, **arguments), timeout=30.0
+                asyncio.to_thread(func, **call_args), timeout=30.0
             )
             await self._emit(
                 EventType.TOOL_COMPLETED,
@@ -122,18 +138,65 @@ class AgentRun:
         """Call the LLM with a per-call timeout, retrying transient failures."""
         policy = self.agent.retry
         attempt = 0
+        gen_failures = 0
+        shrink_attempts = 0
         while True:
+            # After a malformed-tool-call failure, nudge the model with a transient
+            # hint (sent to the provider but never stored in the history).
+            outgoing = self.messages
+            if gen_failures:
+                outgoing = [*self.messages, Message(role="user", content=GENERATION_ERROR_HINT)]
             try:
                 return await asyncio.wait_for(
                     self.agent.llm.generate(
-                        self.agent.model, self.messages, self.agent.tool_schemas
+                        self.agent.model, outgoing, self.agent.tool_schemas
                     ),
                     timeout=policy.call_timeout,
                 )
             except Exception as e:
+                if is_request_too_large(e):
+                    # Waiting can't help: the request itself exceeds the cap. Shrink old
+                    # tool output to ~65% of the stated limit and re-send.
+                    limit = extract_token_limit(e)
+                    shrink_attempts += 1
+                    fits = False
+                    if limit and shrink_attempts <= 3:
+                        reserved = self.agent.context.estimator.count_text(
+                            json.dumps(self.agent.tool_schemas)
+                        )
+                        fits = shrink_to_fit(
+                            self.messages,
+                            int(limit * 0.65),
+                            self.agent.context.estimator,
+                            reserved_tokens=reserved,
+                        )
+                    if not fits:
+                        raise LLMExecutionError(f"LLM call failed: {e}") from e
+                    await self._emit(
+                        EventType.MODEL_RETRY,
+                        attempt=shrink_attempts,
+                        delay=0.0,
+                        error="request too large; trimmed older tool output",
+                    )
+                    continue
+                if is_generation_error(e):
+                    gen_failures += 1
+                    if gen_failures > MAX_GENERATION_RETRIES:
+                        raise LLMExecutionError(f"LLM call failed: {e}") from e
+                    await self._emit(
+                        EventType.MODEL_RETRY,
+                        attempt=gen_failures,
+                        delay=0.0,
+                        error="malformed tool call; re-sampling",
+                    )
+                    continue
                 if not is_retryable(e) or attempt + 1 >= policy.max_attempts:
                     raise LLMExecutionError(f"LLM call failed: {e}") from e
-                delay = backoff_delay(attempt, policy)
+                requested = extract_retry_delay(e)
+                if requested is not None and requested > policy.max_delay:
+                    # Daily/hourly quota: waiting is pointless, surface it now.
+                    raise LLMExecutionError(f"LLM call failed: {e}") from e
+                delay = backoff_delay(attempt, policy, exc=e)
                 attempt += 1
                 await self._emit(
                     EventType.MODEL_RETRY,

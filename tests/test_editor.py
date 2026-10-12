@@ -190,5 +190,7 @@ def test_editor_schema_extraction(editor):
     assert props["view_range"]["type"] == "array"
     assert props["view_range"]["items"] == {"type": "integer"}
 
-    # command and path are required, the rest are optional
-    assert fn["parameters"]["required"] == ["command", "path"]
+    # command defaults to the read-only 'view' and path to '.', so models that omit
+    # them are not rejected by strict provider-side validation.
+    assert fn["parameters"]["required"] == []
+    assert props["command"]["default"] == "view"

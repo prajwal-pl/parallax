@@ -47,12 +47,13 @@ def test_cli_doctor(monkeypatch):
 
 def test_cli_doctor_missing_key(monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
     console = Console(record=True, theme=PARALLAX_THEME)
     healthy = run_doctor(console=console)
     output = console.export_text()
 
     assert healthy is False
-    assert "missing" in output
+    assert "unset" in output
 
 
 def test_build_default_agent():
@@ -219,6 +220,84 @@ def test_slash_command_completer():
     assert "/help commands" in completions_h
     assert "/help shortcuts" in completions_h
 
+    # Test /model <space> completion
+    doc_model_space = Document(text="/model ", cursor_position=7)
+    completions_models = [c.text for c in completer.get_completions(doc_model_space, CompleteEvent(text_inserted=False))]
+    assert "liquid/lfm-2.5-2.6b:free" in completions_models
+    assert "openai/gpt-4o-mini" in completions_models
+    assert "llama-3.3-70b-versatile" in completions_models
+
+    # Test /m <space> prefix filter
+    doc_m_filter = Document(text="/m open", cursor_position=6)
+    completions_filter = [c.text for c in completer.get_completions(doc_m_filter, CompleteEvent(text_inserted=False))]
+    assert "openai/gpt-4o-mini" in completions_filter
+    assert "llama-3.3-70b-versatile" not in completions_filter
+
+
+@pytest.mark.asyncio
+async def test_repl_pick_model_interactive():
+    agent = build_default_agent()
+    console = Console(record=True, theme=PARALLAX_THEME)
+    repl = InteractiveRepl(agent=agent, console=console)
+
+    # 1. Test selecting an OpenRouter model via picker
+    with patch("sys.stdin.isatty", return_value=True), patch(
+        "prompt_toolkit.application.Application.run_async", new=AsyncMock(return_value="openai/gpt-4o-mini")
+    ):
+        await repl._handle_command("/model")
+        assert agent.model == "openai/gpt-4o-mini"
+        assert agent.provider_name == "OpenRouter"
+
+    # 2. Test selecting a Groq model via picker
+    with patch("sys.stdin.isatty", return_value=True), patch(
+        "prompt_toolkit.application.Application.run_async", new=AsyncMock(return_value="llama-3.3-70b-versatile")
+    ):
+        await repl._handle_command("/model")
+        assert agent.model == "llama-3.3-70b-versatile"
+        assert agent.provider_name == "Groq"
+
+    # 3. Test selecting custom model
+    mock_prompt_session = AsyncMock()
+    mock_prompt_session.prompt_async.return_value = "custom-provider/special-model"
+    with patch("sys.stdin.isatty", return_value=True), patch(
+        "prompt_toolkit.application.Application.run_async", new=AsyncMock(return_value="__custom__")
+    ), patch.object(repl, "_get_prompt_session", return_value=mock_prompt_session):
+        await repl._handle_command("/model")
+        assert agent.model == "custom-provider/special-model"
+
+    # 4. Test cancelling picker
+    with patch("sys.stdin.isatty", return_value=True), patch(
+        "prompt_toolkit.application.Application.run_async", new=AsyncMock(return_value=None)
+    ):
+        await repl._handle_command("/model")
+        assert agent.model == "custom-provider/special-model"
+        out = console.export_text()
+        assert "selection cancelled" in out
+
+
+@pytest.mark.asyncio
+async def test_agent_set_model_switching():
+    from parallax.core.llm import GroqClient, OpenRouterClient
+    agent = build_default_agent(model="liquid/lfm-2.5-2.6b:free")
+    assert isinstance(agent.llm, OpenRouterClient)
+
+    # Switch to groq prefix
+    agent.set_model("groq/llama-3.1-8b-instant")
+    assert agent.model == "llama-3.1-8b-instant"
+    assert isinstance(agent.llm, GroqClient)
+    assert agent.provider_name == "Groq"
+
+    # Switch to standard groq model without prefix
+    agent.set_model("llama-3.3-70b-versatile")
+    assert agent.model == "llama-3.3-70b-versatile"
+    assert isinstance(agent.llm, GroqClient)
+
+    # Switch back to openrouter model
+    agent.set_model("anthropic/claude-3.5-sonnet")
+    assert agent.model == "anthropic/claude-3.5-sonnet"
+    assert isinstance(agent.llm, OpenRouterClient)
+    assert agent.provider_name == "OpenRouter"
+
 
 @pytest.mark.asyncio
 async def test_repl_run_async_prompt():
@@ -248,6 +327,7 @@ async def test_repl_run_async_prompt():
     output = console.export_text()
     assert "PARALLAX" in output
     assert "session ended" in output
+
 
 
 

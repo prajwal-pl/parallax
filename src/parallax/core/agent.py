@@ -1,13 +1,27 @@
 from collections.abc import AsyncIterator, Callable
 from typing import Any
+import os
 
 from parallax.core.context import ContextConfig, ContextManager
 from parallax.core.errors import DuplicateToolError
-from parallax.core.llm import LLMClient, OpenRouterClient, RetryPolicy
+from parallax.core.llm import LLMClient, OpenRouterClient, GroqClient, RetryPolicy
 from parallax.core.run import AgentRun
 from parallax.core.tool import extract_schema
 from parallax.core.types import AgentEvent, AgentResult, Message
 
+
+
+KNOWN_GROQ_MODELS: set[str] = {
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.8-27b",
+    "openai/gpt-oss-safeguard-20b",
+    "llama-3.1-8b-instant",
+    "llama-3.1-70b-versatile",
+    "llama-3.3-70b-versatile",
+    "mixtral-8x7b-32768",
+    "gemma2-9b-it",
+}
 
 
 class Agent:
@@ -21,11 +35,58 @@ class Agent:
     ):
         self.model = model
         self.system_prompt = system_prompt
-        self.llm: LLMClient = llm or OpenRouterClient()
+        if llm is not None:
+            self.llm = llm
+        else:
+            provider = os.getenv("PARALLAX_PROVIDER", "").lower()
+            use_groq = (
+                provider == "groq"
+                or model.startswith("groq/")
+                or (provider != "openrouter" and model in KNOWN_GROQ_MODELS)
+            )
+            if use_groq:
+                self.llm = GroqClient()
+                if model.startswith("groq/"):
+                    self.model = model[len("groq/"):]
+            else:
+                self.llm = OpenRouterClient()
         self.retry = retry or RetryPolicy()
         self.context = ContextManager(context)
         self.tool_registry: dict[str, Callable[..., Any]] = {}
         self.tool_schemas: list[dict[str, Any]] = []
+        
+    @property
+    def provider_name(self) -> str:
+        """Name of the active LLM provider."""
+        return "Groq" if isinstance(self.llm, GroqClient) else "OpenRouter"
+
+    def set_model(self, model: str, provider: str | None = None) -> None:
+        """Update active model and configure LLM provider client accordingly."""
+        if provider in ("GroqClient", "Groq"):
+            self.model = model[len("groq/"):] if model.startswith("groq/") else model
+            if not isinstance(self.llm, GroqClient):
+                self.llm = GroqClient()
+            return
+        if provider in ("OpenRouterClient", "OpenRouter"):
+            self.model = model
+            if not isinstance(self.llm, OpenRouterClient):
+                self.llm = OpenRouterClient()
+            return
+
+        if model.startswith("groq/"):
+            self.model = model[len("groq/"):]
+            if not isinstance(self.llm, GroqClient):
+                self.llm = GroqClient()
+        elif model in KNOWN_GROQ_MODELS:
+            self.model = model
+            if not isinstance(self.llm, GroqClient):
+                self.llm = GroqClient()
+        elif "/" not in model and isinstance(self.llm, GroqClient):
+            self.model = model
+        else:
+            self.model = model
+            if not isinstance(self.llm, OpenRouterClient):
+                self.llm = OpenRouterClient()
 
     def add_tool(self, func: Callable[..., Any]) -> None:
         name = func.__name__

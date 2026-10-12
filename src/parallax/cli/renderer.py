@@ -20,6 +20,7 @@ from parallax.cli.theme import (
     ICON_SUCCESS,
     PANEL_BOX,
 )
+from parallax.core.llm import extract_retry_delay
 from parallax.core.types import AgentEvent, EventType
 
 
@@ -228,18 +229,76 @@ class CliRenderer:
         """Abstract raw provider tracebacks into clean, high-signal actionable cards."""
         lower_err = raw_error.lower()
 
-        if "free-models-per-day" in lower_err or "rate limit" in lower_err or "429" in lower_err:
+        if "tokens per day" in lower_err or "(tpd)" in lower_err:
+            title = "Daily Token Quota Reached"
+            summary = "This model's daily token quota on your provider plan is used up."
+            wait = extract_retry_delay(RuntimeError(raw_error))
+            if wait:
+                mins = max(1, round(wait / 60))
+                summary += f" It resets in about {mins} min." if mins < 120 else f" It resets in about {mins // 60} h."
+            suggestions = [
+                ("Switch model", "/model openai/gpt-oss-120b or /model openrouter"),
+                ("Upgrade", "console.groq.com/settings/billing for higher limits"),
+            ]
+        elif any(k in lower_err for k in (
+            "tool call validation failed", "output_parse_failed", "tool_use_failed", "failed_generation",
+        )):
+            title = "Malformed Tool Call"
+            summary = "The model repeatedly produced an invalid tool call, even after automatic retries."
+            suggestions = [
+                ("Retry", "Send your request again; this is usually transient"),
+                ("Switch model", "/model openai/gpt-oss-120b"),
+            ]
+        elif "decommissioned" in lower_err:
+            title = "Model Decommissioned"
+            summary = "The selected model has been decommissioned by the provider and is no longer available."
+            suggestions = [
+                ("Active Groq models", "/model openai/gpt-oss-120b or /model qwen/qwen3.8-27b"),
+                ("Switch provider", "/model openrouter"),
+            ]
+        elif "model_not_found" in lower_err or "does not exist or you do not have access" in lower_err:
+            title = "Model Not Accessible"
+            summary = "The requested model is not available or not enabled for your account/API tier."
+            suggestions = [
+                ("Browse available models", "/model groq or /model openrouter"),
+                ("Run doctor", "parallax doctor to verify API keys and connectivity"),
+            ]
+        elif "tool calling is not supported" in lower_err or "does not support chat" in lower_err:
+            title = "Model Incompatible"
+            summary = "This model does not support chat completions or function calling required by the agent."
+            suggestions = [
+                ("Recommended Groq models", "/model openai/gpt-oss-120b or /model qwen/qwen3.8-27b"),
+                ("Recommended OpenRouter", "/model liquid/lfm-2.5-2.6b:free"),
+            ]
+        elif any(k in lower_err for k in ("tpm", "tokens per minute", "413", "request too large", "rate_limit_exceeded")):
+            title = "Token Rate Limit Exceeded"
+            summary = "The provider tokens-per-minute (TPM) quota was exceeded. History can be compacted to reduce token volume."
+            suggestions = [
+                ("Wait a moment", "Groq rate limits reset on a 60-second sliding window"),
+                ("Compact context", "/compact to summarize earlier conversation turns"),
+                ("Switch to high-capacity model", "/model openai/gpt-oss-120b"),
+                ("Switch to OpenRouter", "/model openrouter"),
+            ]
+        elif "free-models-per-day" in lower_err:
             title = "Provider Quota Limit"
             summary = "The daily free request quota for this model on OpenRouter has been reached."
             suggestions = [
                 ("Switch model", "/model meta-llama/llama-3.3-70b-instruct:free"),
                 ("Add credits", "openrouter.ai/credits to unlock higher rate limits"),
             ]
+        elif "rate limit" in lower_err or "429" in lower_err:
+            title = "Provider Rate Limit"
+            summary = "The request limit or quota for this model has been reached."
+            suggestions = [
+                ("Switch model", "/model meta-llama/llama-3.3-70b-instruct:free or /model groq"),
+                ("Compact context", "/compact to reduce tokens sent per request"),
+            ]
         elif "unauthorized" in lower_err or "401" in lower_err or "invalid api key" in lower_err:
             title = "Authentication Failure"
             summary = "The configured provider API key is missing or invalid."
             suggestions = [
-                ("Set API key", "Ensure OPENROUTER_API_KEY is configured in your .env file"),
+                ("Configure API key", "Ensure GROQ_API_KEY or OPENROUTER_API_KEY is configured in your .env file"),
+                ("Diagnostics", "Run 'parallax doctor' to check API key status"),
             ]
         elif "context length" in lower_err or "maximum context" in lower_err:
             title = "Context Limit Exceeded"
@@ -256,9 +315,13 @@ class CliRenderer:
             ]
         else:
             title = "Execution Failed"
-            summary = "The agent encountered an unrecoverable provider failure."
+            clean_msg = raw_error.strip().split("\n")[0]
+            if len(clean_msg) > 120:
+                clean_msg = clean_msg[:117] + "..."
+            summary = f"Provider returned an error: {clean_msg}" if clean_msg else "The agent encountered an unrecoverable provider failure."
             suggestions = [
                 ("Diagnostics", "Run 'parallax doctor' to inspect environment health"),
+                ("Switch model", "Run '/model' to select another available provider model"),
             ]
 
         content = Text()
