@@ -206,7 +206,7 @@ class AgentRun:
                 )
                 await asyncio.sleep(delay)
 
-    MAX_ITERATIONS = 30
+    MAX_ITERATIONS = 100
 
     async def execute(self) -> AgentResult:
         await self._emit(EventType.RUN_STARTED, task=self.user_input)

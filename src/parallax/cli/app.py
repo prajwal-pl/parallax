@@ -266,7 +266,7 @@ def tools_cmd():
 def version_cmd():
     """Show Parallax version and runtime information."""
     console = get_console()
-    console.print("[brand]parallax[/brand] [muted]v0.1.1[/muted]")
+    console.print("[brand]parallax[/brand] [muted]v0.1.2[/muted]")
 
 
 def main():

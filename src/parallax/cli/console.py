@@ -49,7 +49,7 @@ def _get_git_status() -> str:
 def print_hero(
     model: str,
     workspace: str | Path | None = None,
-    version: str = "0.1.1",
+    version: str = "0.1.2",
     console: Console | None = None,
 ) -> None:
     """Render the flagship Parallax landing card with text-based branding and shortcuts."""
