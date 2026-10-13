@@ -28,10 +28,30 @@ from parallax.cli.renderer import CliRenderer
 from parallax.cli.repl import InteractiveRepl
 from parallax.cli.theme import PANEL_BOX
 
-# Ensure .env is loaded
-load_dotenv()
+from parallax.cli.config import (
+    has_configured_keys,
+    load_global_config,
+    prompt_onboarding,
+)
 
-DEFAULT_MODEL = os.environ.get("PARALLAX_MODEL", "liquid/lfm-2.5-2.6b:free")
+# Ensure environment variables are loaded (.env and ~/.parallax/config.json)
+load_dotenv()
+load_global_config()
+
+
+def get_default_model() -> str:
+    """Determine the default model based on environment variables and available API keys."""
+    if os.environ.get("PARALLAX_MODEL"):
+        return os.environ["PARALLAX_MODEL"]
+    if os.environ.get("PARALLAX_PROVIDER", "").lower() == "groq":
+        return "llama-3.3-70b-versatile"
+    # Auto-fallback to Groq if user only configured GROQ_API_KEY
+    if os.environ.get("GROQ_API_KEY") and not os.environ.get("OPENROUTER_API_KEY"):
+        return "llama-3.3-70b-versatile"
+    return "liquid/lfm-2.5-2.6b:free"
+
+
+DEFAULT_MODEL = "liquid/lfm-2.5-2.6b:free"
 DEFAULT_SYSTEM_PROMPT = (
     "You are an expert autonomous software engineer. "
     "You have access to:\n"
@@ -62,7 +82,7 @@ def build_default_agent(
     bash_tool = BashTool(env=env)
     search_tool = SearchTool(env=env)
 
-    chosen_model = model or DEFAULT_MODEL
+    chosen_model = model or get_default_model()
     agent = Agent(
         model=chosen_model,
         context=ContextConfig(workspace=ws),
@@ -128,6 +148,9 @@ def default_entry(
     if ctx.invoked_subcommand is not None:
         return
 
+    if not has_configured_keys():
+        prompt_onboarding()
+
     agent = build_default_agent(model=model)
     task_args = " ".join(ctx.args).strip()
 
@@ -156,6 +179,8 @@ def chat_cmd(
     ] = False,
 ):
     """Start an interactive multi-turn chat session with Parallax."""
+    if not has_configured_keys():
+        prompt_onboarding()
     agent = build_default_agent(model=model)
     repl = InteractiveRepl(agent=agent, verbose=verbose)
     asyncio.run(repl.run())
@@ -178,7 +203,10 @@ def run_cmd(
     ] = False,
 ):
     """Execute a single task and return on completion."""
+    if not has_configured_keys():
+        prompt_onboarding()
     agent = build_default_agent(model=model)
+
     code = asyncio.run(_run_single_task(agent, task, verbose=verbose, quiet=quiet))
     if code != 0:
         raise typer.Exit(code=code)
@@ -238,7 +266,7 @@ def tools_cmd():
 def version_cmd():
     """Show Parallax version and runtime information."""
     console = get_console()
-    console.print("[brand]parallax[/brand] [muted]v0.1.0[/muted]")
+    console.print("[brand]parallax[/brand] [muted]v0.1.1[/muted]")
 
 
 def main():

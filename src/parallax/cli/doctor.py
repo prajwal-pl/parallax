@@ -71,7 +71,7 @@ def run_doctor(console: Console | None = None) -> bool:
         table.add_row(
             "OPENROUTER_API_KEY",
             f"[status.warning]{ICON_WARNING} unset[/status.warning]",
-            "Optional if using Groq. Set in .env for OpenRouter inference.",
+            "Optional if using Groq. Set in .env or ~/.parallax/config.json",
         )
 
     if groq_key:
@@ -85,11 +85,26 @@ def run_doctor(console: Console | None = None) -> bool:
         table.add_row(
             "GROQ_API_KEY",
             f"[status.warning]{ICON_WARNING} unset[/status.warning]",
-            "Optional if using OpenRouter. Set in .env for Groq inference.",
+            "Optional if using OpenRouter. Set in .env or ~/.parallax/config.json",
         )
 
     if not openrouter_key and not groq_key:
         all_healthy = False
+
+    # 3. Global Configuration Check
+    cfg_file = Path.home() / ".parallax" / "config.json"
+    if cfg_file.is_file():
+        table.add_row(
+            "Global Config",
+            f"[status.success]{ICON_SUCCESS} active[/status.success]",
+            f"{cfg_file}",
+        )
+    else:
+        table.add_row(
+            "Global Config",
+            f"[status.warning]{ICON_WARNING} not set[/status.warning]",
+            "Optional: ~/.parallax/config.json for machine-wide settings",
+        )
 
     # 3. Tavily API Key (Optional)
     tavily_key = os.environ.get("TAVILY_API_KEY")

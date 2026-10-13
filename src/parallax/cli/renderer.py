@@ -295,10 +295,12 @@ class CliRenderer:
             ]
         elif "unauthorized" in lower_err or "401" in lower_err or "invalid api key" in lower_err:
             title = "Authentication Failure"
-            summary = "The configured provider API key is missing or invalid."
+            summary = "The active model provider's API key is missing or invalid."
             suggestions = [
-                ("Configure API key", "Ensure GROQ_API_KEY or OPENROUTER_API_KEY is configured in your .env file"),
-                ("Diagnostics", "Run 'parallax doctor' to check API key status"),
+                ("Switch to Groq", "If using GROQ_API_KEY, switch to a Groq model: '/model groq' or '--model llama-3.3-70b-versatile'"),
+                ("Switch to OpenRouter", "If using OPENROUTER_API_KEY, check your key or switch with '/model openrouter'"),
+                ("Configure key", "Ensure the matching GROQ_API_KEY or OPENROUTER_API_KEY is configured in .env"),
+                ("Diagnostics", "Run 'parallax doctor' to inspect API key configuration"),
             ]
         elif "context length" in lower_err or "maximum context" in lower_err:
             title = "Context Limit Exceeded"

@@ -290,8 +290,8 @@ wheels = [
 ]
 
 [[package]]
-name = "parallax"
-version = "0.1.0"
+name = "parallax-agent"
+version = "0.1.1"
 source = { virtual = "." }
 dependencies = [
     { name = "groq" },

@@ -1,9 +1,18 @@
 [project]
-name = "parallax"
-version = "0.1.0"
+name = "parallax-agent"
+version = "0.1.1"
 description = "Modular, model-agnostic AI coding agent runtime"
 readme = "README.md"
 requires-python = ">=3.14"
+license = {text = "MIT"}
+keywords = ["ai", "agent", "coding", "cli", "runtime", "llm"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development",
+]
 dependencies = [
     "groq>=1.7.0",
     "openrouter>=1.2.17",
@@ -15,6 +24,11 @@ dependencies = [
     "tiktoken>=0.14.0",
     "typer>=0.27.3",
 ]
+
+[project.urls]
+"Homepage" = "https://github.com/prajwal-pl/parallax"
+"Repository" = "https://github.com/prajwal-pl/parallax"
+"Issues" = "https://github.com/prajwal-pl/parallax/issues"
 
 [dependency-groups]
 dev = [
@@ -28,4 +42,3 @@ parallax = "parallax.cli.app:main"
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 asyncio_mode = "auto"
-

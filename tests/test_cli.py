@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from rich.console import Console
@@ -20,7 +21,7 @@ def test_cli_version():
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
     assert "parallax" in result.stdout
-    assert "v0.1.0" in result.stdout
+    assert "v0.1.1" in result.stdout
 
 
 def test_cli_tools():
@@ -62,6 +63,47 @@ def test_build_default_agent():
     assert "bash" in agent.tool_registry
     assert "str_replace_editor" in agent.tool_registry
     assert "search_code" in agent.tool_registry
+
+
+def test_get_default_model_auto_selects_groq(monkeypatch):
+    from parallax.cli.app import get_default_model
+    monkeypatch.delenv("PARALLAX_MODEL", raising=False)
+    monkeypatch.delenv("PARALLAX_PROVIDER", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+
+    assert get_default_model() == "llama-3.3-70b-versatile"
+
+
+def test_get_default_model_with_openrouter(monkeypatch):
+    from parallax.cli.app import get_default_model
+    monkeypatch.delenv("PARALLAX_MODEL", raising=False)
+    monkeypatch.delenv("PARALLAX_PROVIDER", raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+
+    assert get_default_model() == "liquid/lfm-2.5-2.6b:free"
+
+
+def test_global_config_load_and_save(tmp_path, monkeypatch):
+    from parallax.cli.config import get_config_file, load_global_config, save_global_config
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+
+    saved_path = save_global_config({"GROQ_API_KEY": "gsk_saved_key"})
+    assert saved_path == tmp_path / ".parallax" / "config.json"
+    assert saved_path.is_file()
+
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    loaded = load_global_config()
+    assert loaded.get("GROQ_API_KEY") == "gsk_saved_key"
+    assert os.environ.get("GROQ_API_KEY") == "gsk_saved_key"
+
+
+def test_prompt_onboarding_non_interactive(monkeypatch):
+    from parallax.cli.config import prompt_onboarding
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    assert prompt_onboarding() is False
 
 
 def test_renderer_event_stream():
