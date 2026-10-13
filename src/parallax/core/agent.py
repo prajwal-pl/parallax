@@ -60,6 +60,11 @@ class Agent:
         """Name of the active LLM provider."""
         return "Groq" if isinstance(self.llm, GroqClient) else "OpenRouter"
 
+    @property
+    def workspace(self) -> str:
+        """Configured workspace directory for the agent."""
+        return self.context.config.workspace
+
     def set_model(self, model: str, provider: str | None = None) -> None:
         """Update active model and configure LLM provider client accordingly."""
         if provider in ("GroqClient", "Groq"):

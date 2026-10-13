@@ -23,6 +23,7 @@ from .tool import extract_schema, tool
 from .tools.bash import BashTool
 from .tools.editor import EditorTool
 from .tools.search import SearchTool
+from .session import Session, SessionStore
 from .types import (
     AgentEvent,
     AgentResult,

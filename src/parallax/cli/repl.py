@@ -15,6 +15,7 @@ from prompt_toolkit.layout.containers import HSplit, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.layout.layout import Layout
 from prompt_toolkit.styles import Style
+from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -34,6 +35,7 @@ from parallax.cli.theme import (
 )
 from parallax.core.context.compactor import compact
 from parallax.core.llm import fetch_groq_models, fetch_openrouter_models
+from parallax.core.session import Session, SessionStore
 from parallax.core.types import EventType, Message
 
 # Fallback models when offline or if live fetch fails
@@ -133,6 +135,10 @@ class SlashCommandCompleter(Completer):
         ("/model", "View or switch active LLM model"),
         ("/model groq", "Browse and select Groq models"),
         ("/model openrouter", "Browse and select OpenRouter models"),
+        ("/sessions", "View all saved conversation sessions"),
+        ("/session", "Switch, view, or resume sessions"),
+        ("/resume", "Resume a previous session by ID"),
+        ("/new", "Start a fresh new conversation session"),
         ("/key", "View or configure LLM provider API keys"),
         ("/key groq", "Set Groq API key"),
         ("/key openrouter", "Set OpenRouter API key"),
@@ -146,8 +152,13 @@ class SlashCommandCompleter(Completer):
         ("/quit", "Exit the interactive session"),
     ]
 
-    def __init__(self, get_agent: Callable[[], Agent] | None = None):
+    def __init__(
+        self,
+        get_agent: Callable[[], Agent] | None = None,
+        get_session_store: Callable[[], SessionStore] | None = None,
+    ):
         self.get_agent = get_agent
+        self.get_session_store = get_session_store
 
     def get_completions(self, document: Document, complete_event: CompleteEvent):
         text = document.text_before_cursor
@@ -192,7 +203,25 @@ class SlashCommandCompleter(Completer):
                         display_meta="Configure provider",
                     )
 
-        # 3. Slash command completions
+        # 3. Session autocomplete after "/session " or "/resume "
+        elif text.startswith(("/session ", "/resume ")):
+            prefix = text.split()[0] + " "
+            sess_text = text[len(prefix):]
+            if self.get_session_store:
+                try:
+                    store = self.get_session_store()
+                    for s in store.list_sessions(limit=20):
+                        if s.id.lower().startswith(sess_text.lower()) or sess_text.lower() in s.id.lower():
+                            yield Completion(
+                                s.id,
+                                start_position=-len(sess_text),
+                                display=s.id,
+                                display_meta=f"{s.title[:24]} ({s.turn_count} turns)",
+                            )
+                except Exception:
+                    pass
+
+        # 4. Slash command completions
         elif text.startswith("/"):
             for cmd, desc in self.COMMANDS:
                 if cmd.lower().startswith(text.lower()):
@@ -225,11 +254,32 @@ class InteractiveRepl:
     slash commands with autocomplete popup, and live event rendering.
     """
 
-    def __init__(self, agent: Agent, console: Console | None = None, verbose: bool = False):
+    def __init__(
+        self,
+        agent: Agent,
+        console: Console | None = None,
+        verbose: bool = False,
+        session: Session | None = None,
+        session_store: SessionStore | None = None,
+    ):
         self.agent = agent
         self.console = console or get_console()
         self.verbose = verbose
-        self.messages: list[Message] = []
+        self.session_store = session_store or SessionStore()
+
+        if session is not None:
+            self.session = session
+            # Load non-system messages into REPL turn history
+            self.messages: list[Message] = [
+                m for m in self.session.messages if m.role != "system"
+            ]
+        else:
+            self.session = self.session_store.create_session(
+                workspace=str(self.agent.workspace),
+                model=self.agent.model,
+            )
+            self.messages = []
+
         self._prompt_session: PromptSession[str] | None = None
         self._prefetch_task: asyncio.Task[None] | None = None
 
@@ -243,7 +293,10 @@ class InteractiveRepl:
     def _get_prompt_session(self) -> PromptSession[str]:
         if self._prompt_session is None:
             self._prompt_session = PromptSession(
-                completer=SlashCommandCompleter(get_agent=lambda: self.agent),
+                completer=SlashCommandCompleter(
+                    get_agent=lambda: self.agent,
+                    get_session_store=lambda: self.session_store,
+                ),
                 complete_while_typing=True,
                 style=_PT_STYLE,
             )
@@ -251,7 +304,19 @@ class InteractiveRepl:
 
     async def run(self) -> None:
         """Run the interactive REPL loop."""
-        print_hero(model=self.agent.model, console=self.console)
+        print_hero(
+            model=self.agent.model,
+            workspace=self.agent.workspace,
+            session_id=self.session.id,
+            console=self.console,
+        )
+
+        if self.messages:
+            self.console.print(
+                f"  [status.success]{ICON_SUCCESS}[/status.success] "
+                f"[muted]resumed session[/muted] [tool.name]{self.session.id}[/tool.name] "
+                f"[dim]({len(self.messages)} messages loaded · {self.session.title})[/dim]\n"
+            )
 
         # Warm the dynamic model cache in the background
         self._prefetch_task = asyncio.create_task(self._prefetch_models())
@@ -302,6 +367,9 @@ class InteractiveRepl:
                     updated_messages = event.data.get("messages")
                     if updated_messages:
                         self.messages = updated_messages
+                        # Persist session state
+                        self.session.update(self.messages, model=self.agent.model)
+                        self.session_store.save_session(self.session)
         except (KeyboardInterrupt, asyncio.CancelledError):
             renderer.stop_spinner()
             self.console.print(f"\n  [status.warning]! run cancelled[/status.warning]\n")
@@ -322,9 +390,35 @@ class InteractiveRepl:
             self._show_help(topic=args)
 
         elif command in ("/clear", "/cls"):
-            self.messages.clear()
+            if self.messages:
+                self.session.update(self.messages, model=self.agent.model)
+                self.session_store.save_session(self.session)
+            self.session = self.session_store.create_session(
+                workspace=str(self.agent.workspace),
+                model=self.agent.model,
+            )
+            self.messages = []
             self.console.clear()
-            print_hero(model=self.agent.model, console=self.console)
+            print_hero(
+                model=self.agent.model,
+                workspace=self.agent.workspace,
+                session_id=self.session.id,
+                console=self.console,
+            )
+
+        elif command == "/sessions":
+            self._show_sessions()
+
+        elif command in ("/resume", "/session"):
+            if not args or args.lower() in ("list", "ls"):
+                self._show_sessions()
+            elif args.lower() in ("new", "create"):
+                self._new_session()
+            else:
+                self._resume_session(args)
+
+        elif command == "/new":
+            self._new_session()
 
         elif command in ("/model", "/m"):
             norm_args = args.lower().strip()
@@ -351,6 +445,9 @@ class InteractiveRepl:
             elif args:
                 old_model = self.agent.model
                 self.agent.set_model(args)
+                if self.agent.model != old_model:
+                    self.session.model = self.agent.model
+                    self.session_store.save_session(self.session)
                 self.console.print(
                     f"[status.success]{ICON_SUCCESS}[/status.success] "
                     f"[muted]switched model from[/muted] [tool.name]{old_model}[/tool.name] "
@@ -503,6 +600,120 @@ class InteractiveRepl:
                 f"[muted]Unknown provider '{provider}'. Use 'groq' or 'openrouter'.[/muted]\n"
             )
 
+    def _show_sessions(self) -> None:
+        """Render a table of saved conversation sessions."""
+        sessions = self.session_store.list_sessions(limit=25)
+        if not sessions:
+            self.console.print("[dim #64748b]No saved sessions found.[/dim #64748b]\n")
+            return
+
+        table = Table(
+            box=None,
+            show_header=True,
+            header_style="bold #818cf8",
+            expand=True,
+            padding=(0, 1),
+        )
+        table.add_column("Session ID", style="brand", no_wrap=True)
+        table.add_column("Title", style="white", ratio=2)
+        table.add_column("Model", style="tool.name", ratio=1)
+        table.add_column("Turns", style="dim #94a3b8", width=6, justify="right")
+        table.add_column("Updated", style="dim #64748b", no_wrap=True)
+
+        for s in sessions:
+            is_active = (s.id == self.session.id)
+            id_text = f"[bold #38bdf8]● {s.id}[/bold #38bdf8]" if is_active else f"  {s.id}"
+            title_text = s.title if len(s.title) <= 36 else s.title[:33] + "..."
+            updated_text = s.updated_at[:16].replace("T", " ")
+            table.add_row(
+                id_text,
+                title_text,
+                s.model or "default",
+                str(s.turn_count),
+                updated_text,
+            )
+
+        panel = Panel(
+            table,
+            box=PANEL_BOX,
+            border_style="#334155",
+            padding=(0, 1),
+            title="[brand]parallax[/brand] [dim #64748b]· conversation sessions[/dim #64748b]",
+            title_align="left",
+        )
+        self.console.print()
+        self.console.print(panel)
+        self.console.print(
+            "[dim #64748b]● active · Switch/resume: /resume <id> (or prefix) · Fresh: /new[/dim #64748b]\n"
+        )
+
+    def _resume_session(self, target_id: str) -> None:
+        """Switch active session to a previously saved session."""
+        target_id = target_id.strip()
+        if not target_id:
+            self._show_sessions()
+            if sys.stdin.isatty():
+                try:
+                    choice = self.console.input("[brand]› Enter Session ID or prefix to resume:[/brand] ").strip()
+                    if choice:
+                        self._resume_session(choice)
+                except (KeyboardInterrupt, EOFError):
+                    self.console.print()
+            return
+
+        loaded = self.session_store.get_session(target_id)
+        if not loaded:
+            self.console.print(
+                f"[status.error]{ICON_ERROR}[/status.error] "
+                f"[muted]session matching '{target_id}' not found. Type /sessions to view all.[/muted]\n"
+            )
+            return
+
+        if loaded.id == self.session.id:
+            self.console.print(
+                f"[dim #64748b]Session {loaded.id} is already active.[/dim #64748b]\n"
+            )
+            return
+
+        # Auto-save current session before switching
+        if self.messages:
+            self.session.update(self.messages, model=self.agent.model)
+            self.session_store.save_session(self.session)
+
+        # Switch to loaded session
+        self.session = loaded
+        self.messages = [m for m in self.session.messages if m.role != "system"]
+        if self.session.model:
+            try:
+                self.agent.set_model(self.session.model)
+            except Exception:
+                pass
+
+        self.console.print(
+            f"[status.success]{ICON_SUCCESS}[/status.success] "
+            f"[muted]resumed session[/muted] [tool.name]{self.session.id}[/tool.name] "
+            f"[dim]({len(self.messages)} messages · {self.session.turn_count} turns · model: {self.session.model})[/dim]"
+        )
+        if self.session.title:
+            self.console.print(f"  [muted]Title:[/muted] [white]{self.session.title}[/white]")
+        self.console.print()
+
+    def _new_session(self) -> None:
+        """Save current session and start a new clean session."""
+        if self.messages:
+            self.session.update(self.messages, model=self.agent.model)
+            self.session_store.save_session(self.session)
+
+        self.session = self.session_store.create_session(
+            workspace=str(self.agent.workspace),
+            model=self.agent.model,
+        )
+        self.messages = []
+        self.console.print(
+            f"[status.success]{ICON_SUCCESS}[/status.success] "
+            f"[muted]started new session[/muted] [tool.name]{self.session.id}[/tool.name]\n"
+        )
+
     def _create_commands_table(self) -> Table:
         table = Table(
             box=None,
@@ -517,12 +728,15 @@ class InteractiveRepl:
 
         table.add_row("/help [topic]", "Show interactive guide and command help", "/h, ?")
         table.add_row("/model [name]", "View or switch active LLM provider model", "/m")
+        table.add_row("/sessions", "View all saved conversation sessions", "")
+        table.add_row("/resume <id>", "Resume a previous session by ID or prefix", "/session")
+        table.add_row("/new", "Start a fresh new conversation session", "")
         table.add_row("/key [provider]", "View or configure LLM provider API keys", "/keys, /config")
         table.add_row("/context", "Inspect conversation turns and token usage", "/c")
         table.add_row("/compact", "Trigger turn-atomic history compaction", "")
         table.add_row("/tools", "List registered runtime tools and schemas", "/t")
         table.add_row("/doctor", "Run environment, API key, and Git diagnostics", "/d")
-        table.add_row("/clear", "Clear screen and reset session history", "/cls")
+        table.add_row("/clear", "Clear screen and start a fresh session", "/cls")
         table.add_row("/exit", "Exit the interactive session", "/quit, /q")
         return table
 
@@ -679,6 +893,9 @@ class InteractiveRepl:
         """Apply selected model and display confirmation."""
         if isinstance(selected, ModelOption):
             self.agent.set_model(selected.id, provider=selected.provider)
+            if self.agent.model != old_model:
+                self.session.model = self.agent.model
+                self.session_store.save_session(self.session)
             self.console.print(
                 f"[status.success]{ICON_SUCCESS}[/status.success] "
                 f"[muted]switched model from[/muted] [tool.name]{old_model}[/tool.name] "
@@ -693,6 +910,9 @@ class InteractiveRepl:
                 selected = custom_name.strip() if custom_name and custom_name.strip() else None
             if selected:
                 self.agent.set_model(selected)
+                if self.agent.model != old_model:
+                    self.session.model = self.agent.model
+                    self.session_store.save_session(self.session)
                 self.console.print(
                     f"[status.success]{ICON_SUCCESS}[/status.success] "
                     f"[muted]switched model from[/muted] [tool.name]{old_model}[/tool.name] "

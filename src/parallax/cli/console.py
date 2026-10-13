@@ -49,7 +49,8 @@ def _get_git_status() -> str:
 def print_hero(
     model: str,
     workspace: str | Path | None = None,
-    version: str = "0.1.3",
+    session_id: str | None = None,
+    version: str = "0.1.4",
     console: Console | None = None,
 ) -> None:
     """Render the flagship Parallax landing card with text-based branding and shortcuts."""
@@ -74,6 +75,8 @@ def print_hero(
 
     meta.add_row("model", f"{model}")
     meta.add_row("workspace", f"{ws_str} [dim #64748b]({git_info})[/dim #64748b]")
+    if session_id:
+        meta.add_row("session", f"{session_id}")
 
     # Quick Commands table
     cmds = Table.grid(padding=(0, 2))
@@ -82,6 +85,7 @@ def print_hero(
 
     cmds.add_row("/help", "interactive guide & keyboard shortcuts")
     cmds.add_row("/model", "switch active LLM model")
+    cmds.add_row("/sessions", "view or resume saved sessions")
     cmds.add_row("/context", "token usage & turn count")
     cmds.add_row("/doctor", "system health & environment check")
     cmds.add_row("/clear", "clear terminal screen & session history")

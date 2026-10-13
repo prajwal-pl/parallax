@@ -42,6 +42,47 @@ class Message:
         # Plain message (system, user, or final assistant response)
         return {"role": self.role, "content": self.content}
 
+    @classmethod
+    def from_dict(cls, data: dict) -> Message:
+        """Reconstruct a Message instance from a serialized dictionary."""
+        role = data.get("role", "user")
+        content = data.get("content", "") or ""
+        tool_call_id = data.get("tool_call_id")
+        raw_tool_calls = data.get("tool_calls")
+        tool_calls: list[ToolCall] | None = None
+        if raw_tool_calls:
+            tool_calls = []
+            for tc in raw_tool_calls:
+                if isinstance(tc, dict):
+                    if "function" in tc and isinstance(tc["function"], dict):
+                        raw_args = tc["function"].get("arguments", "{}")
+                        try:
+                            args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                        except Exception:
+                            args = {}
+                        tool_calls.append(
+                            ToolCall(
+                                id=tc.get("id", ""),
+                                name=tc["function"].get("name", ""),
+                                arguments=args if isinstance(args, dict) else {},
+                            )
+                        )
+                    else:
+                        tool_calls.append(
+                            ToolCall(
+                                id=tc.get("id", ""),
+                                name=tc.get("name", ""),
+                                arguments=tc.get("arguments", {}),
+                                error=tc.get("error"),
+                            )
+                        )
+        return cls(
+            role=role,
+            content=content,
+            tool_call_id=tool_call_id,
+            tool_calls=tool_calls,
+        )
+
 
 class EventType(str, Enum):
     RUN_STARTED = "run_started"

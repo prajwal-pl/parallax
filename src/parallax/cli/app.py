@@ -8,6 +8,7 @@ from typing import Annotated, Optional
 
 import typer
 from dotenv import load_dotenv
+from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -21,6 +22,8 @@ from parallax import (
     EventType,
     LocalEnvironment,
     SearchTool,
+    Session,
+    SessionStore,
 )
 from parallax.cli.console import get_console
 from parallax.cli.doctor import run_doctor
@@ -98,23 +101,60 @@ def build_default_agent(
     return agent
 
 
+def _resolve_session(
+    resume_arg: str | None,
+    store: SessionStore,
+    console: Console,
+) -> Session | None:
+    """Resolve a session instance from an ID, prefix, or 'latest' keyword."""
+    if not resume_arg:
+        return None
+    target = resume_arg.strip()
+    if target.lower() in ("latest", "last"):
+        sessions = store.list_sessions(limit=1)
+        if not sessions:
+            console.print(f"\n  [status.error]{ICON_ERROR}[/status.error] [muted]No saved sessions found to resume.[/muted]\n")
+            raise typer.Exit(code=1)
+        return sessions[0]
+
+    session = store.get_session(target)
+    if not session:
+        console.print(
+            f"\n  [status.error]{ICON_ERROR}[/status.error] "
+            f"[muted]Session matching '{target}' not found.[/muted]\n"
+            f"[dim]Run 'parallax sessions' to view all available sessions.[/dim]\n"
+        )
+        raise typer.Exit(code=1)
+    return session
+
+
 async def _run_single_task(
     agent: Agent,
     task: str,
     verbose: bool = False,
     quiet: bool = False,
+    session: Session | None = None,
+    session_store: SessionStore | None = None,
 ) -> int:
     """Execute a single task and return exit code (0 for success, 1 for failure)."""
     console = get_console()
     renderer = CliRenderer(console=console, verbose=verbose, quiet=quiet)
     exit_code = 0
+    history = [m for m in session.messages if m.role != "system"] if session else None
 
     try:
-        async for event in agent.run_stream(task):
+        async for event in agent.run_stream(task, history=history):
             renderer.handle_event(event)
             if event.type == EventType.RUN_FAILED:
                 exit_code = 1
-    except KeyboardInterrupt, asyncio.CancelledError:
+            elif event.type == EventType.RUN_COMPLETED:
+                if session:
+                    updated_messages = event.data.get("messages")
+                    if updated_messages:
+                        session.update(updated_messages, model=agent.model)
+                        store = session_store or SessionStore()
+                        store.save_session(session)
+    except (KeyboardInterrupt, asyncio.CancelledError):
         renderer.stop_spinner()
         console.print("\n  [status.warning]! run cancelled[/status.warning]\n")
         return 130
@@ -132,6 +172,10 @@ def default_entry(
     model: Annotated[
         Optional[str],
         typer.Option("--model", "-m", help="Model identifier to use."),
+    ] = None,
+    resume: Annotated[
+        Optional[str],
+        typer.Option("--resume", "-r", help="Resume a saved session by ID, prefix, or 'latest'."),
     ] = None,
     verbose: Annotated[
         bool,
@@ -153,19 +197,34 @@ def default_entry(
     if not has_configured_keys():
         prompt_onboarding()
 
-    agent = build_default_agent(model=model)
+    store = SessionStore()
+    session = _resolve_session(resume, store, get_console()) if resume else None
+    chosen_model = model or (session.model if session else None)
+    agent = build_default_agent(model=chosen_model)
     task_args = " ".join(ctx.args).strip()
 
     if task_args:
         # Single-shot execution from positional arguments
         code = asyncio.run(
-            _run_single_task(agent, task_args, verbose=verbose, quiet=quiet)
+            _run_single_task(
+                agent,
+                task_args,
+                verbose=verbose,
+                quiet=quiet,
+                session=session,
+                session_store=store,
+            )
         )
         if code != 0:
             raise typer.Exit(code=code)
     else:
         # Launch interactive REPL
-        repl = InteractiveRepl(agent=agent, verbose=verbose)
+        repl = InteractiveRepl(
+            agent=agent,
+            verbose=verbose,
+            session=session,
+            session_store=store,
+        )
         asyncio.run(repl.run())
 
 
@@ -175,6 +234,10 @@ def chat_cmd(
         Optional[str],
         typer.Option("--model", "-m", help="Model identifier to use."),
     ] = None,
+    resume: Annotated[
+        Optional[str],
+        typer.Option("--resume", "-r", help="Resume a saved session by ID, prefix, or 'latest'."),
+    ] = None,
     verbose: Annotated[
         bool,
         typer.Option("--verbose", "-v", help="Show expanded tool outputs."),
@@ -183,8 +246,16 @@ def chat_cmd(
     """Start an interactive multi-turn chat session with Parallax."""
     if not has_configured_keys():
         prompt_onboarding()
-    agent = build_default_agent(model=model)
-    repl = InteractiveRepl(agent=agent, verbose=verbose)
+    store = SessionStore()
+    session = _resolve_session(resume, store, get_console()) if resume else None
+    chosen_model = model or (session.model if session else None)
+    agent = build_default_agent(model=chosen_model)
+    repl = InteractiveRepl(
+        agent=agent,
+        verbose=verbose,
+        session=session,
+        session_store=store,
+    )
     asyncio.run(repl.run())
 
 
@@ -194,6 +265,10 @@ def run_cmd(
     model: Annotated[
         Optional[str],
         typer.Option("--model", "-m", help="Model identifier to use."),
+    ] = None,
+    resume: Annotated[
+        Optional[str],
+        typer.Option("--resume", "-r", help="Resume a saved session by ID, prefix, or 'latest'."),
     ] = None,
     verbose: Annotated[
         bool,
@@ -207,11 +282,161 @@ def run_cmd(
     """Execute a single task and return on completion."""
     if not has_configured_keys():
         prompt_onboarding()
-    agent = build_default_agent(model=model)
+    store = SessionStore()
+    session = _resolve_session(resume, store, get_console()) if resume else None
+    chosen_model = model or (session.model if session else None)
+    agent = build_default_agent(model=chosen_model)
 
-    code = asyncio.run(_run_single_task(agent, task, verbose=verbose, quiet=quiet))
+    code = asyncio.run(
+        _run_single_task(
+            agent,
+            task,
+            verbose=verbose,
+            quiet=quiet,
+            session=session,
+            session_store=store,
+        )
+    )
     if code != 0:
         raise typer.Exit(code=code)
+
+
+@app.command("sessions")
+def sessions_cmd(
+    limit: Annotated[
+        int,
+        typer.Option("--limit", "-n", help="Maximum number of sessions to display."),
+    ] = 20,
+    delete: Annotated[
+        Optional[str],
+        typer.Option("--delete", "-d", help="Delete a session by ID or prefix."),
+    ] = None,
+):
+    """List or manage saved conversation sessions."""
+    console = get_console()
+    store = SessionStore()
+
+    if delete:
+        target = store.get_session(delete)
+        if not target:
+            console.print(f"\n  [status.error]{ICON_ERROR}[/status.error] [muted]Session matching '{delete}' not found.[/muted]\n")
+            raise typer.Exit(code=1)
+        store.delete_session(target.id)
+        console.print(f"\n  [status.success]{ICON_SUCCESS}[/status.success] [muted]Deleted session[/muted] [tool.name]{target.id}[/tool.name].\n")
+        return
+
+    sessions = store.list_sessions(limit=limit)
+    if not sessions:
+        console.print("\n  [dim #64748b]No saved sessions found.[/dim #64748b]\n")
+        return
+
+    table = Table(
+        box=None,
+        show_header=True,
+        header_style="bold #818cf8",
+        expand=True,
+        padding=(0, 1),
+    )
+    table.add_column("Session ID", style="brand", no_wrap=True)
+    table.add_column("Title", style="white", ratio=2)
+    table.add_column("Model", style="tool.name", ratio=1)
+    table.add_column("Turns", style="dim #94a3b8", width=6, justify="right")
+    table.add_column("Updated", style="dim #64748b", no_wrap=True)
+
+    for s in sessions:
+        title_text = s.title if len(s.title) <= 36 else s.title[:33] + "..."
+        updated_text = s.updated_at[:16].replace("T", " ")
+        table.add_row(
+            s.id,
+            title_text,
+            s.model or "default",
+            str(s.turn_count),
+            updated_text,
+        )
+
+    console.print()
+    console.print(
+        Panel(
+            table,
+            title="[brand]parallax sessions[/brand] [muted]· conversation history[/muted]",
+            title_align="left",
+            box=PANEL_BOX,
+            border_style="#334155",
+            padding=(0, 1),
+        )
+    )
+    console.print("[dim #64748b]To resume: parallax resume <session-id> (or 'parallax -r latest')[/dim #64748b]")
+    console.print("[dim #64748b]To delete: parallax sessions --delete <session-id>[/dim #64748b]\n")
+
+
+@app.command("resume")
+def resume_cmd(
+    session_id: Annotated[
+        Optional[str],
+        typer.Argument(help="Session ID, prefix, or 'latest' to resume."),
+    ] = None,
+    model: Annotated[
+        Optional[str],
+        typer.Option("--model", "-m", help="Model identifier to use."),
+    ] = None,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="Show expanded tool outputs."),
+    ] = False,
+):
+    """Resume a previous conversation session."""
+    if not has_configured_keys():
+        prompt_onboarding()
+
+    console = get_console()
+    store = SessionStore()
+
+    target_id = session_id or "latest"
+    session = _resolve_session(target_id, store, console)
+
+    chosen_model = model or (session.model if session else None)
+    agent = build_default_agent(model=chosen_model)
+    repl = InteractiveRepl(
+        agent=agent,
+        verbose=verbose,
+        session=session,
+        session_store=store,
+    )
+    asyncio.run(repl.run())
+
+
+@app.command("session")
+def session_cmd(
+    action: Annotated[
+        Optional[str],
+        typer.Argument(help="Action: 'list', 'resume', 'delete', or session ID to resume."),
+    ] = None,
+    target: Annotated[
+        Optional[str],
+        typer.Argument(help="Session ID when action is 'resume' or 'delete'."),
+    ] = None,
+    model: Annotated[
+        Optional[str],
+        typer.Option("--model", "-m", help="Model identifier to use."),
+    ] = None,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="Show expanded tool outputs."),
+    ] = False,
+):
+    """Manage or resume conversation sessions."""
+    if action in (None, "list", "ls"):
+        sessions_cmd()
+    elif action in ("delete", "rm", "del"):
+        if not target:
+            get_console().print("[status.error]✕ Session ID required to delete.[/status.error]")
+            raise typer.Exit(code=1)
+        sessions_cmd(delete=target)
+    elif action in ("resume", "open"):
+        resume_cmd(session_id=target, model=model, verbose=verbose)
+    else:
+        # action is likely the session ID itself: e.g. `parallax session sess_123`
+        resume_cmd(session_id=action, model=model, verbose=verbose)
 
 
 @app.command("doctor")
@@ -384,7 +609,7 @@ def key_cmd(
 def version_cmd():
     """Show Parallax version and runtime information."""
     console = get_console()
-    console.print("[brand]parallax[/brand] [muted]v0.1.3[/muted]")
+    console.print("[brand]parallax[/brand] [muted]v0.1.4[/muted]")
 
 
 def main():

@@ -25,6 +25,7 @@ from parallax.core.tool import extract_schema, tool
 from parallax.core.tools.bash import BashTool
 from parallax.core.tools.editor import EditorTool
 from parallax.core.tools.search import SearchTool
+from parallax.core.session import Session, SessionStore
 from parallax.core.types import (
     AgentEvent,
     AgentResult,
@@ -61,6 +62,8 @@ __all__ = [
     "ParallaxError",
     "RetryPolicy",
     "SearchTool",
+    "Session",
+    "SessionStore",
     "ToolCall",
     "ToolError",
     "ToolExecutionError",

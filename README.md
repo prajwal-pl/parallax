@@ -14,6 +14,99 @@ execute code safely, and maintain run state. The CLI, desktop
 application, and web application should all consume the same core
 runtime.
 
+------------------------------------------------------------------------
+
+## Installation & Quickstart
+
+Install the official package from PyPI:
+
+```bash
+pip install parallax-agent
+```
+
+Or install with `uv`:
+
+```bash
+uv add parallax-agent
+```
+
+### 1. Configure Inference Providers
+
+Parallax supports **Groq** (ultra-fast inference with free tier at [console.groq.com](https://console.groq.com)) and **OpenRouter** (200+ models from Anthropic, OpenAI, Meta at [openrouter.ai](https://openrouter.ai)):
+
+```bash
+# Launch interactive onboarding wizard
+parallax config setup
+
+# Or set provider API keys directly:
+parallax config set groq gsk_...
+parallax config set openrouter sk-or-...
+```
+
+Keys are stored with secure user-only permissions (`0o600`) in `~/.parallax/config.json`. You can also configure them via environment variables (`GROQ_API_KEY`, `OPENROUTER_API_KEY`, or local `.env`).
+
+### 2. Run Autonomous Tasks
+
+Execute autonomous problem-solving directly in your repository:
+
+```bash
+# Execute a task autonomously
+parallax "Fix the failing authentication tests in this repository"
+
+# Choose a specific model
+parallax -m groq/llama-3.3-70b-versatile "Refactor the database queries"
+```
+
+### 3. Interactive Multi-Turn REPL
+
+Launch the flagship developer REPL:
+
+```bash
+parallax
+# or
+parallax chat
+```
+
+Inside the interactive console:
+- **Slash Commands Menu**: Type `/` to bring up autocomplete suggestions.
+- `/model`: Live model switcher with provider tabs (**All / Groq / OpenRouter**) and real-time fuzzy search.
+- `/sessions`: View conversation sessions with turn counts, active model, and timestamps.
+- `/resume <id>`: Switch and resume any previous session by ID or prefix.
+- `/new`: Start a fresh conversation session.
+- `/key`: View and configure LLM provider API keys on the fly.
+- `/context`: Inspect active tokens and turn counts.
+- `/compact`: Trigger manual context window compaction.
+- `/tools`: Inspect active runtime tools and parameter schemas.
+- `/doctor`: Run environment diagnostics and connectivity checks.
+- `/clear`: Clear terminal screen and reset session.
+
+### 4. First-Class Session Management
+
+Parallax automatically persists all multi-turn sessions with atomic `0o600` writes in `~/.parallax/sessions/`:
+
+```bash
+# List all saved sessions
+parallax sessions
+
+# Resume the most recent session
+parallax resume latest
+# or
+parallax -r latest
+
+# Resume a specific session by ID or prefix
+parallax resume sess_20261013_140532
+# or
+parallax -r 140532
+
+# Resume a session and execute a followup single-shot task
+parallax run --resume latest "Now run pytest and verify all tests pass"
+
+# Delete a saved session
+parallax sessions --delete sess_20261013_140532
+```
+
+------------------------------------------------------------------------
+
 ## Project Vision
 
 Parallax aims to become a reusable **AI agent runtime** rather than
@@ -279,18 +372,27 @@ Parallax is organized as an installable package (`src/parallax`) providing a hea
 parallax/
 ├── src/
 │   └── parallax/               # Main installable package
-│       ├── __init__.py         # Public exports (Agent, LocalEnvironment, BashTool, etc.)
-│       └── core/               # Headless agent runtime
-│           ├── agent.py        # Agent coordinator & high-level run methods
-│           ├── run.py          # Asynchronous TaskGroup execution loop
-│           ├── llm.py          # LLM client with retry & full exponential jitter
-│           ├── environment.py  # LocalEnvironment runtime abstraction
-│           ├── tool.py         # Tool decorator & registry system
-│           ├── types.py        # Typed dataclasses (Message, AgentEvent, etc.)
-│           ├── errors.py       # Domain error hierarchy
-│           ├── tools/          # Core tools (bash, editor, search)
-│           └── context/        # Token estimation, compactor, manager
-├── tests/                      # Comprehensive test suite (131+ unit & e2e tests)
+│       ├── __init__.py         # Public exports (Agent, Session, SessionStore, etc.)
+│       ├── core/               # Headless agent runtime (zero UI dependencies)
+│       │   ├── agent.py        # Agent coordinator & high-level run methods
+│       │   ├── run.py          # Asynchronous execution loop (100 max iterations)
+│       │   ├── session.py      # Session model & atomic 0o600 disk persistence
+│       │   ├── llm.py          # Multi-provider client (Groq + OpenRouter)
+│       │   ├── environment.py  # LocalEnvironment runtime abstraction
+│       │   ├── tool.py         # Tool decorator & schema extraction
+│       │   ├── types.py        # Typed dataclasses (Message, AgentEvent, ToolCall)
+│       │   ├── errors.py       # Domain error hierarchy
+│       │   ├── tools/          # Core tools (bash, editor, search)
+│       │   └── context/        # Token estimation, compactor, manager
+│       └── cli/                # Flagship interactive terminal interface
+│           ├── app.py          # Typer CLI entrypoint & commands
+│           ├── repl.py         # prompt_toolkit REPL with live autocomplete
+│           ├── config.py       # Multi-provider config & onboarding wizard
+│           ├── renderer.py     # Clean high-signal terminal event renderer
+│           ├── console.py      # Flagship landing hero card & status
+│           ├── doctor.py       # System health & connectivity diagnostics
+│           └── theme.py        # Minimalist theme & symbols
+├── tests/                      # Comprehensive test suite (201+ unit & e2e tests)
 ├── pyproject.toml              # Dependencies, packaging & build configuration
 ├── PLAN.md                     # Roadmap and execution tracking
 ├── LEARNING.md                 # Engineering study guide & applied learnings
@@ -936,52 +1038,23 @@ assuming model-generated commands are trustworthy.
 
 # Sessions and Persistence
 
-Sessions should eventually become first-class objects.
+Sessions are first-class runtime objects in Parallax, completely decoupled from UI and terminal libraries.
 
-A session may contain:
+### Core Domain Model & Persistence
+- **`Session` (`parallax.core.session.Session`)**:
+  - Encapsulates `id`, `workspace`, `model`, `title`, `created_at`, `updated_at`, `messages`, and `metadata`.
+  - Computes `turn_count` from user interactions.
+  - Automatically derives human-readable titles from the initial user prompt.
+  - Serializes and deserializes cleanly via `to_dict()` and `from_dict()`.
+- **`SessionStore` (`parallax.core.session.SessionStore`)**:
+  - Securely persists session JSON files to `~/.parallax/sessions/<session_id>.json`.
+  - Atomic persistence: writes payload to a `.tmp` file with user-only `0o600` permissions before atomic rename.
+  - Prefix matching: allows resuming sessions by typing partial IDs or prefixes (e.g., `parallax resume bc4c`).
+  - Corruption resilience: gracefully tolerates and skips corrupt or non-JSON files.
 
-``` text
-user
-repository
-working directory
-model
-configuration
-messages
-runs
-tool calls
-checkpoints
-usage
-state
-```
-
-Conceptual hierarchy:
-
-``` text
-User
- └── Session
-      ├── Run
-      │    ├── Messages
-      │    ├── Tool Calls
-      │    ├── Events
-      │    └── Result
-      │
-      ├── Run
-      └── Run
-```
-
-Local mode may initially use:
-
-``` text
-SQLite
-```
-
-Platform mode may use:
-
-``` text
-PostgreSQL
-```
-
-The runtime should not require a cloud database to operate locally.
+### Interface Integration
+- **Terminal REPL**: Automatically saves state upon turn completion (`EventType.RUN_COMPLETED`), updates model on `/model` switches, supports live switching with `/resume`, lists sessions with `/sessions`, and suggests session IDs via dynamic autocomplete.
+- **CLI Commands**: `parallax sessions`, `parallax resume <id | prefix | latest>`, and `--resume` / `-r` flag across `chat` and `run`.
 
 ------------------------------------------------------------------------
 
@@ -2095,23 +2168,28 @@ The LLM is one component of the system.
 
 ## Status
 
-⚡ **Core Runtime & CLI Operational (Phases 0–5 & Phase 14 Complete)**
+⚡ **Core Runtime & CLI Operational (v0.1.4 Released on PyPI)**
 
-The core headless runtime and flagship terminal CLI are fully implemented, tested, and packaged:
+The core headless runtime and flagship terminal CLI are fully implemented, thoroughly tested, and packaged:
 
 - **Phase 0 (Foundation)**: Dataclasses, JSON schemas, typed exceptions, `LocalEnvironment` abstraction.
-- **Phase 1 (Tools)**: Tool decorator & registry, `BashTool` (with 30k char head+tail windowing), `EditorTool`, `SearchTool`.
-- **Phase 2 (Async Agent Loop)**: Asynchronous task group runner, queue-based event streaming (`AgentEvent`, `EventType`), cooperative cancellation.
-- **Phase 3 (Hardening & Resilience)**: Retry loop with full exponential jitter, 429/500/502/503 handling, HTTP error classification, safe tool dispatch.
-- **Phase 4 (Packaging & Architecture)**: Modular `src/parallax/` layout cleanly decoupling core runtime (`parallax.core`) from UI layers.
-- **Phase 5 (Context Management & Compaction)**: Exact tiktoken token estimation, dynamic sliding context windowing, turn-atomic compaction (preserving OpenAI tool call/response pairs).
-- **Phase 14 (Interactive Terminal CLI)**: Flagship terminal interface via Typer + Rich (`parallax` CLI entrypoint):
-  - Single-shot execution: `parallax "Fix failing tests in auth"`
-  - Interactive multi-turn REPL: `parallax` / `parallax chat` with slash commands (`/help`, `/model`, `/context`, `/compact`, `/tools`, `/clear`, `/exit`)
+- **Phase 1 (Tools)**: Tool decorator & schema extraction, `BashTool` (with head+tail windowing), `EditorTool`, `SearchTool`.
+- **Phase 2 (Async Agent Loop)**: Asynchronous task group runner, queue-based event streaming (`AgentEvent`, `EventType`), cooperative cancellation, 100 max iterations.
+- **Phase 3 (Hardening & Resilience)**: Retry loop with full exponential jitter, 429/500/502/503 handling, multi-provider error classification, safe tool dispatch.
+- **Phase 4 (Packaging & Architecture)**: Modular `src/parallax/` layout cleanly decoupling core runtime (`parallax.core`) from UI layers (`parallax.cli`).
+- **Phase 5 (Context Management & Compaction)**: Exact tiktoken token estimation, dynamic sliding context windowing, turn-atomic compaction (preserving tool call/response pairs).
+- **Phase 11 (First-Class Sessions & Persistence)**: Decoupled `Session` model, atomic `0o600` filesystem persistence (`SessionStore`), fuzzy prefix lookups, auto-titling, turn counting, and seamless REPL / CLI resumption.
+- **Phase 14 (Interactive Terminal CLI)**: Flagship developer terminal interface via Typer + Rich + prompt_toolkit:
+  - Single-shot task execution: `parallax "Fix failing tests in auth"`
+  - Interactive multi-turn REPL: `parallax` / `parallax chat` with prompt_toolkit dropdown autocomplete
+  - Live model switcher: `/model` with provider tabs (**All / Groq / OpenRouter**) and real-time fuzzy search
+  - Session commands: `/sessions`, `/resume <id>`, `/new`, `/clear`
+  - Multi-provider configuration: `/key`, `parallax config setup`, and `~/.parallax/config.json`
   - Diagnostics & tools: `parallax doctor` and `parallax tools`
   - Premium developer UX: strictly zero emojis, live typing/progress indicators, collapsible tool receipts, and bounded syntax diff previews.
+- **Quality & Verification**: 201 tests passing (`pytest`), 100% type-checked (`pyright` 0 errors), verified in isolated Docker containers (`python:3.14-slim`).
 
-**Next Milestone**: Process-Level Execution Control & Phase 11 (Local SQLite Persistence).
+**Next Milestone**: AST & Repository Intelligence (Phase 6), MCP Integration (Phase 8), and Sandbox Hardening (Phase 10).
 
 ------------------------------------------------------------------------
 
