@@ -23,11 +23,13 @@ from rich.text import Text
 from parallax.cli.console import get_console, print_hero
 from parallax.cli.doctor import run_doctor
 from parallax.cli.renderer import CliRenderer
+from parallax.cli.config import get_provider_status, save_global_config
 from parallax.cli.theme import (
     ICON_BULLET,
     ICON_ERROR,
     ICON_SUCCESS,
     ICON_USER,
+    ICON_WARNING,
     PANEL_BOX,
 )
 from parallax.core.context.compactor import compact
@@ -36,11 +38,11 @@ from parallax.core.types import EventType, Message
 
 # Fallback models when offline or if live fetch fails
 FALLBACK_GROQ_MODELS = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
     "openai/gpt-oss-120b",
     "openai/gpt-oss-20b",
     "qwen/qwen3.8-27b",
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
 ]
 FALLBACK_OPENROUTER_MODELS = [
     "liquid/lfm-2.5-2.6b:free",
@@ -131,6 +133,10 @@ class SlashCommandCompleter(Completer):
         ("/model", "View or switch active LLM model"),
         ("/model groq", "Browse and select Groq models"),
         ("/model openrouter", "Browse and select OpenRouter models"),
+        ("/key", "View or configure LLM provider API keys"),
+        ("/key groq", "Set Groq API key"),
+        ("/key openrouter", "Set OpenRouter API key"),
+        ("/config", "Alias for /key"),
         ("/context", "Inspect conversation turns and token count"),
         ("/compact", "Manually compact conversation history"),
         ("/tools", "List all registered runtime tools"),
@@ -173,7 +179,20 @@ class SlashCommandCompleter(Completer):
                         display_meta=provider,
                     )
 
-        # 2. Slash command completions
+        # 2. Key autocomplete after "/key ", "/keys ", or "/config "
+        elif text.startswith(("/key ", "/keys ", "/config ")):
+            prefix = text.split()[0] + " "
+            key_text = text[len(prefix):]
+            for prov in ("groq", "openrouter"):
+                if prov.startswith(key_text.lower()):
+                    yield Completion(
+                        prov,
+                        start_position=-len(key_text),
+                        display=prov,
+                        display_meta="Configure provider",
+                    )
+
+        # 3. Slash command completions
         elif text.startswith("/"):
             for cmd, desc in self.COMMANDS:
                 if cmd.lower().startswith(text.lower()):
@@ -338,6 +357,7 @@ class InteractiveRepl:
                     f"[muted]to[/muted] [tool.name]{self.agent.model}[/tool.name] "
                     f"[dim]({self.agent.provider_name})[/dim]\n"
                 )
+                self._warn_if_key_missing()
 
             else:
                 old_model = self.agent.model
@@ -348,6 +368,9 @@ class InteractiveRepl:
                     models = await get_all_models()
                 selected = await self._pick_model(models, initial_provider_filter="All")
                 await self._apply_selected_model(selected, old_model)
+
+        elif command in ("/key", "/keys", "/config"):
+            await self._handle_key_command(args)
 
         elif command in ("/doctor", "/d"):
             run_doctor(self.console)
@@ -368,6 +391,118 @@ class InteractiveRepl:
 
         return None
 
+    def _warn_if_key_missing(self) -> None:
+        """Warn user if active model's provider has no configured API key."""
+        import os
+        if self.agent.provider_name == "Groq" and not os.getenv("GROQ_API_KEY"):
+            self.console.print(
+                f"  [status.warning]{ICON_WARNING}[/status.warning] "
+                f"[muted]Warning: GROQ_API_KEY is not configured. Run[/muted] "
+                f"[tool.name]/key groq <api-key>[/tool.name] [muted]to add it.[/muted]\n"
+            )
+        elif self.agent.provider_name == "OpenRouter" and not os.getenv("OPENROUTER_API_KEY"):
+            self.console.print(
+                f"  [status.warning]{ICON_WARNING}[/status.warning] "
+                f"[muted]Warning: OPENROUTER_API_KEY is not configured. Run[/muted] "
+                f"[tool.name]/key openrouter <api-key>[/tool.name] [muted]to add it.[/muted]\n"
+            )
+
+    async def _handle_key_command(self, args: str) -> None:
+        """Handle /key slash command to view or configure provider keys."""
+        args_clean = args.strip()
+        if not args_clean:
+            statuses = get_provider_status()
+            table = Table(
+                box=None,
+                show_header=True,
+                header_style="bold #818cf8",
+                expand=True,
+                padding=(0, 2),
+            )
+            table.add_column("Provider", style="tool.name", width=14)
+            table.add_column("Status", style="status.info", width=16)
+            table.add_column("Key", style="white", width=16)
+            table.add_column("Description", style="muted")
+
+            for k, p in statuses.items():
+                status_txt = (
+                    f"[status.success]{ICON_SUCCESS} configured[/status.success]"
+                    if p["configured"]
+                    else f"[status.warning]{ICON_WARNING} unset[/status.warning]"
+                )
+                table.add_row(
+                    p["name"],
+                    status_txt,
+                    p["masked"],
+                    p["description"],
+                )
+
+            panel = Panel(
+                table,
+                box=PANEL_BOX,
+                border_style="#334155",
+                padding=(0, 1),
+                title="[brand]parallax[/brand] [dim #64748b]· provider api keys[/dim #64748b]",
+                title_align="left",
+            )
+            self.console.print()
+            self.console.print(panel)
+            self.console.print("[dim #64748b]To set a key: /key groq <key> or /key openrouter <key>[/dim #64748b]\n")
+
+            if sys.stdin.isatty():
+                try:
+                    choice = self.console.input("[brand]› Configure a key now? [1: Groq, 2: OpenRouter, Enter to skip]:[/brand] ").strip()
+                    if choice == "1":
+                        k = self.console.input("[brand]› Enter Groq API Key (starts with gsk_):[/brand] ").strip()
+                        if k:
+                            save_global_config({"GROQ_API_KEY": k})
+                            _MODEL_CACHE.clear()
+                            self.console.print(f"  [status.success]{ICON_SUCCESS}[/status.success] [muted]Groq key saved and activated.[/muted]\n")
+                    elif choice == "2":
+                        k = self.console.input("[brand]› Enter OpenRouter API Key (starts with sk-or-):[/brand] ").strip()
+                        if k:
+                            save_global_config({"OPENROUTER_API_KEY": k})
+                            _MODEL_CACHE.clear()
+                            self.console.print(f"  [status.success]{ICON_SUCCESS}[/status.success] [muted]OpenRouter key saved and activated.[/muted]\n")
+                except (KeyboardInterrupt, EOFError):
+                    self.console.print()
+            return
+
+        parts = args_clean.split(maxsplit=1)
+        provider = parts[0].lower()
+        if len(parts) > 1:
+            key_val = parts[1].strip()
+        else:
+            if sys.stdin.isatty():
+                key_val = self.console.input(f"[brand]› Enter {provider.capitalize()} API Key:[/brand] ").strip()
+            else:
+                self.console.print(f"[status.error]{ICON_ERROR}[/status.error] [muted]Usage: /key {provider} <api-key>[/muted]\n")
+                return
+
+        if not key_val:
+            self.console.print(f"[status.warning]{ICON_WARNING}[/status.warning] [muted]No key provided.[/muted]\n")
+            return
+
+        if provider in ("groq", "g"):
+            save_global_config({"GROQ_API_KEY": key_val})
+            _MODEL_CACHE.clear()
+            self.console.print(
+                f"[status.success]{ICON_SUCCESS}[/status.success] "
+                f"[muted]Groq API key saved to ~/.parallax/config.json and activated.[/muted]\n"
+            )
+        elif provider in ("openrouter", "or"):
+            save_global_config({"OPENROUTER_API_KEY": key_val})
+            _MODEL_CACHE.clear()
+            self.console.print(
+                f"[status.success]{ICON_SUCCESS}[/status.success] "
+                f"[muted]OpenRouter API key saved to ~/.parallax/config.json and activated.[/muted]\n"
+            )
+        else:
+            self.console.print(
+                f"[status.error]{ICON_ERROR}[/status.error] "
+                f"[muted]Unknown provider '{provider}'. Use 'groq' or 'openrouter'.[/muted]\n"
+            )
+
     def _create_commands_table(self) -> Table:
         table = Table(
             box=None,
@@ -382,6 +517,7 @@ class InteractiveRepl:
 
         table.add_row("/help [topic]", "Show interactive guide and command help", "/h, ?")
         table.add_row("/model [name]", "View or switch active LLM provider model", "/m")
+        table.add_row("/key [provider]", "View or configure LLM provider API keys", "/keys, /config")
         table.add_row("/context", "Inspect conversation turns and token usage", "/c")
         table.add_row("/compact", "Trigger turn-atomic history compaction", "")
         table.add_row("/tools", "List registered runtime tools and schemas", "/t")
@@ -549,6 +685,7 @@ class InteractiveRepl:
                 f"[muted]to[/muted] [tool.name]{self.agent.model}[/tool.name] "
                 f"[dim]({self.agent.provider_name})[/dim]\n"
             )
+            self._warn_if_key_missing()
         elif isinstance(selected, str):
             if selected == "__custom__":
                 session = self._get_prompt_session()
@@ -562,6 +699,7 @@ class InteractiveRepl:
                     f"[muted]to[/muted] [tool.name]{self.agent.model}[/tool.name] "
                     f"[dim]({self.agent.provider_name})[/dim]\n"
                 )
+                self._warn_if_key_missing()
             elif sys.stdin.isatty():
                 self.console.print(
                     f"[dim #64748b]model selection cancelled (current: {self.agent.model})[/dim #64748b]\n"

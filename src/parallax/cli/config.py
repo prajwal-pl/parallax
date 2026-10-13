@@ -4,6 +4,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -93,6 +94,52 @@ def save_global_config(updates: dict[str, str]) -> Path:
     return cfg_file
 
 
+def get_provider_status() -> dict[str, dict[str, Any]]:
+    """Return current configuration status and masked keys for supported LLM providers."""
+    groq_key = os.getenv("GROQ_API_KEY", "")
+    or_key = os.getenv("OPENROUTER_API_KEY", "")
+
+    def mask(k: str) -> str:
+        if not k:
+            return "—"
+        return f"{k[:4]}...{k[-4:]}" if len(k) > 8 else "***"
+
+    return {
+        "groq": {
+            "name": "Groq",
+            "env_var": "GROQ_API_KEY",
+            "configured": bool(groq_key),
+            "key": groq_key,
+            "masked": mask(groq_key),
+            "url": "https://console.groq.com",
+            "description": "Ultra-fast inference & generous free tier",
+            "default_model": "llama-3.3-70b-versatile",
+        },
+        "openrouter": {
+            "name": "OpenRouter",
+            "env_var": "OPENROUTER_API_KEY",
+            "configured": bool(or_key),
+            "key": or_key,
+            "masked": mask(or_key),
+            "url": "https://openrouter.ai",
+            "description": "200+ models from OpenAI, Anthropic, Meta",
+            "default_model": "liquid/lfm-2.5-2.6b:free",
+        },
+    }
+
+
+def set_provider_key(provider: str, key: str) -> bool:
+    """Save an LLM provider key into global config and active os.environ."""
+    norm = provider.strip().lower()
+    if norm in ("groq", "g"):
+        save_global_config({"GROQ_API_KEY": key.strip()})
+        return True
+    elif norm in ("openrouter", "or"):
+        save_global_config({"OPENROUTER_API_KEY": key.strip()})
+        return True
+    return False
+
+
 def has_configured_keys() -> bool:
     """Check if any supported model provider API key is available."""
     return bool(os.getenv("GROQ_API_KEY") or os.getenv("OPENROUTER_API_KEY"))
@@ -100,8 +147,9 @@ def has_configured_keys() -> bool:
 
 def prompt_onboarding(console: Console | None = None) -> bool:
     """
-    Interactive first-run wizard to configure an LLM provider key if none is present.
-    Returns True if an API key was configured, False otherwise.
+    Interactive first-run wizard to configure LLM provider keys.
+    Allows configuring Groq, OpenRouter, or both.
+    Returns True if at least one API key was configured, False otherwise.
     """
     console = console or get_console()
 
@@ -116,13 +164,15 @@ def prompt_onboarding(console: Console | None = None) -> bool:
         "To start reasoning and generating code, Parallax needs an API key to connect to an LLM provider.\n\n",
         style="white",
     )
-    intro.append("Choose an inference provider:\n", style="bold #94a3b8")
+    intro.append("Choose an inference provider setup:\n", style="bold #94a3b8")
     intro.append("  [1] Groq ", style="bold #34d399")
     intro.append("(Recommended · Ultra-fast & Free tier available at https://console.groq.com)\n", style="muted")
     intro.append("  [2] OpenRouter ", style="bold #38bdf8")
     intro.append("(200+ models from OpenAI, Anthropic, Meta at https://openrouter.ai)\n", style="muted")
-    intro.append("  [3] Skip for now ", style="dim")
-    intro.append("(You can configure keys later via .env or ~/.parallax/config.json)\n", style="muted")
+    intro.append("  [3] Both Groq & OpenRouter ", style="bold #a78bfa")
+    intro.append("(Configure both providers for maximum model selection)\n", style="muted")
+    intro.append("  [4] Skip for now ", style="dim")
+    intro.append("(You can configure keys later via /key or .env)\n", style="muted")
 
     panel = Panel(
         intro,
@@ -136,16 +186,31 @@ def prompt_onboarding(console: Console | None = None) -> bool:
     console.print(panel)
     console.print()
 
-    choice = console.input("[brand]› Select provider [1/2/3] (default: 1):[/brand] ").strip() or "1"
+    choice = console.input("[brand]› Select provider [1/2/3/4] (default: 1):[/brand] ").strip() or "1"
+
+    configured_any = False
 
     if choice == "1":
         key = console.input("[brand]› Enter your Groq API Key (starts with gsk_):[/brand] ").strip()
         if key:
             save_global_config({"GROQ_API_KEY": key})
+            configured_any = True
             console.print(
                 f"\n  [status.success]{ICON_SUCCESS}[/status.success] "
-                f"[muted]Key saved to[/muted] [tool.name]~/.parallax/config.json[/tool.name]. "
-                f"[muted]Defaulting to[/muted] [tool.name]llama-3.3-70b-versatile[/tool.name].\n"
+                f"[muted]Groq key saved to[/muted] [tool.name]~/.parallax/config.json[/tool.name]."
+            )
+            # Offer to configure OpenRouter as well
+            also = console.input("[brand]› Would you also like to configure OpenRouter? [y/N] (default: n):[/brand] ").strip().lower()
+            if also in ("y", "yes"):
+                or_key = console.input("[brand]› Enter your OpenRouter API Key (starts with sk-or-):[/brand] ").strip()
+                if or_key:
+                    save_global_config({"OPENROUTER_API_KEY": or_key})
+                    console.print(
+                        f"  [status.success]{ICON_SUCCESS}[/status.success] "
+                        f"[muted]OpenRouter key saved to[/muted] [tool.name]~/.parallax/config.json[/tool.name]."
+                    )
+            console.print(
+                f"  [muted]Defaulting to[/muted] [tool.name]llama-3.3-70b-versatile[/tool.name] [muted](switch anytime with /model).[/muted]\n"
             )
             return True
         else:
@@ -156,16 +221,60 @@ def prompt_onboarding(console: Console | None = None) -> bool:
         key = console.input("[brand]› Enter your OpenRouter API Key (starts with sk-or-):[/brand] ").strip()
         if key:
             save_global_config({"OPENROUTER_API_KEY": key})
+            configured_any = True
             console.print(
                 f"\n  [status.success]{ICON_SUCCESS}[/status.success] "
-                f"[muted]Key saved to[/muted] [tool.name]~/.parallax/config.json[/tool.name]. "
-                f"[muted]Defaulting to[/muted] [tool.name]liquid/lfm-2.5-2.6b:free[/tool.name].\n"
+                f"[muted]OpenRouter key saved to[/muted] [tool.name]~/.parallax/config.json[/tool.name]."
+            )
+            # Offer to configure Groq as well
+            also = console.input("[brand]› Would you also like to configure Groq? [y/N] (default: n):[/brand] ").strip().lower()
+            if also in ("y", "yes"):
+                g_key = console.input("[brand]› Enter your Groq API Key (starts with gsk_):[/brand] ").strip()
+                if g_key:
+                    save_global_config({"GROQ_API_KEY": g_key})
+                    console.print(
+                        f"  [status.success]{ICON_SUCCESS}[/status.success] "
+                        f"[muted]Groq key saved to[/muted] [tool.name]~/.parallax/config.json[/tool.name]."
+                    )
+            console.print(
+                f"  [muted]Defaulting to[/muted] [tool.name]liquid/lfm-2.5-2.6b:free[/tool.name] [muted](switch anytime with /model).[/muted]\n"
             )
             return True
         else:
             console.print(f"\n  [status.warning]{ICON_WARNING}[/status.warning] [muted]No key entered. Continuing without credentials.[/muted]\n")
             return False
 
+    elif choice == "3":
+        # Configure both
+        g_key = console.input("[brand]› Enter your Groq API Key (starts with gsk_):[/brand] ").strip()
+        if g_key:
+            save_global_config({"GROQ_API_KEY": g_key})
+            configured_any = True
+            console.print(
+                f"  [status.success]{ICON_SUCCESS}[/status.success] "
+                f"[muted]Groq key saved to[/muted] [tool.name]~/.parallax/config.json[/tool.name]."
+            )
+
+        or_key = console.input("[brand]› Enter your OpenRouter API Key (starts with sk-or-):[/brand] ").strip()
+        if or_key:
+            save_global_config({"OPENROUTER_API_KEY": or_key})
+            configured_any = True
+            console.print(
+                f"  [status.success]{ICON_SUCCESS}[/status.success] "
+                f"[muted]OpenRouter key saved to[/muted] [tool.name]~/.parallax/config.json[/tool.name]."
+            )
+
+        if configured_any:
+            console.print(
+                f"\n  [status.success]{ICON_SUCCESS}[/status.success] "
+                f"[muted]Both providers configured! Defaulting to[/muted] [tool.name]llama-3.3-70b-versatile[/tool.name] "
+                f"[muted](switch models anytime with /model).[/muted]\n"
+            )
+            return True
+        else:
+            console.print(f"\n  [status.warning]{ICON_WARNING}[/status.warning] [muted]No keys entered. Continuing without credentials.[/muted]\n")
+            return False
+
     else:
-        console.print(f"\n  [muted]Setup skipped. You can configure keys in a [tool.name].env[/tool.name] file or run [tool.name]parallax doctor[/tool.name].[/muted]\n")
+        console.print(f"\n  [muted]Setup skipped. You can configure keys anytime using [tool.name]/key[/tool.name] in chat, [tool.name]parallax config[/tool.name], or a [tool.name].env[/tool.name] file.[/muted]\n")
         return False

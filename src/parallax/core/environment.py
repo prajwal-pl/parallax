@@ -86,6 +86,8 @@ class LocalEnvironment:
             return target.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             raise ToolError(f"File '{path}' appears to be binary and cannot be read as text.")
+        except OSError as e:
+            raise ToolError(f"Cannot read file '{path}': {e}")
 
     def write_file(self, path: str, content: str) -> None:
         target = self._resolve(path)

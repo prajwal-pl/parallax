@@ -45,6 +45,7 @@ class CliRenderer:
         self._active_status: Status | None = None
         self._run_start_time: float = 0.0
         self._tool_start_times: dict[str, float] = {}
+        self._tool_actions: dict[str, str] = {}
         self._tool_calls_count: int = 0
         self._iterations: int = 0
         self._final_content: str = ""
@@ -123,8 +124,8 @@ class CliRenderer:
         content = data.get("content")
         tool_count = data.get("tool_calls_count", 0)
 
-        # Show preliminary assistant thoughts subtly before executing tools
-        if content and tool_count > 0 and not self.quiet:
+        # Show preliminary assistant thoughts only in verbose mode to avoid terminal clutter
+        if self.verbose and content and tool_count > 0 and not self.quiet:
             for line in content.strip().splitlines():
                 if line.strip():
                     self.console.print(f"  [muted]{ICON_LINE_V}[/muted] [dim]{line}[/dim]")
@@ -137,6 +138,7 @@ class CliRenderer:
         self._tool_calls_count += 1
 
         summary = self._format_tool_action(tool_name, arguments)
+        self._tool_actions[tool_call_id] = summary
         self.start_spinner(f"[dim #94a3b8]running[/dim #94a3b8] [tool.name]{summary}[/tool.name]")
 
     def _on_tool_completed(self, data: dict[str, Any]) -> None:
@@ -145,6 +147,7 @@ class CliRenderer:
         tool_name = data.get("tool_name", "")
         result = data.get("result", "")
         start_time = self._tool_start_times.pop(tool_call_id, time.time())
+        self._tool_actions.pop(tool_call_id, tool_name)
         elapsed = max(0.0, time.time() - start_time)
 
         if self.quiet:
@@ -153,10 +156,15 @@ class CliRenderer:
         receipt = Text()
         receipt.append(f"  {ICON_SUCCESS} ", style="status.success")
         receipt.append(tool_name, style="tool.name")
-        receipt.append(f" [muted]· {elapsed:.2f}s[/muted]", style="muted")
-        self.console.print(receipt)
 
-        self._render_tool_output(result)
+        if self.verbose:
+            receipt.append(f" [muted]· {elapsed:.2f}s[/muted]", style="muted")
+            self.console.print(receipt)
+            self._render_tool_output(result)
+        else:
+            summary = self._extract_concise_result(tool_name, result)
+            receipt.append(f" [muted]· {summary} · {elapsed:.2f}s[/muted]", style="muted")
+            self.console.print(receipt)
 
     def _on_tool_failed(self, data: dict[str, Any]) -> None:
         self.stop_spinner()
@@ -164,6 +172,7 @@ class CliRenderer:
         tool_name = data.get("tool_name", "")
         error = data.get("error", "Unknown error")
         start_time = self._tool_start_times.pop(tool_call_id, time.time())
+        self._tool_actions.pop(tool_call_id, tool_name)
         elapsed = max(0.0, time.time() - start_time)
 
         if self.quiet:
@@ -172,13 +181,19 @@ class CliRenderer:
         receipt = Text()
         receipt.append(f"  {ICON_ERROR} ", style="status.error")
         receipt.append(tool_name, style="tool.name")
-        receipt.append(f" [status.error]failed · {elapsed:.2f}s[/status.error]", style="status.error")
-        self.console.print(receipt)
 
-        err_text = Text()
-        for line in error.strip().splitlines()[:6]:
-            err_text.append(f"    {ICON_LINE_V} {line}\n", style="status.error")
-        self.console.print(err_text)
+        if self.verbose:
+            receipt.append(f" [status.error]failed · {elapsed:.2f}s[/status.error]", style="status.error")
+            self.console.print(receipt)
+
+            err_text = Text()
+            for line in error.strip().splitlines()[:6]:
+                err_text.append(f"    {ICON_LINE_V} {line}\n", style="status.error")
+            self.console.print(err_text)
+        else:
+            clean_err = self._abstract_tool_error(error)
+            receipt.append(f" [status.error]failed · {clean_err} · {elapsed:.2f}s[/status.error]", style="status.error")
+            self.console.print(receipt)
 
     def _on_context_compacted(self, data: dict[str, Any]) -> None:
         if self.quiet:
@@ -353,15 +368,60 @@ class CliRenderer:
         if name == "bash":
             cmd = args.get("command", "")
             return f"bash $ {cmd[:60]}..." if len(cmd) > 60 else f"bash $ {cmd}"
-        elif name == "editor":
+        elif name in ("editor", "str_replace_editor"):
             action = args.get("command", "")
             path = args.get("path", "")
-            return f"editor {action} {path}"
-        elif name == "search":
+            return f"{action} {path}" if action and path else f"editor {action or path}"
+        elif name in ("search", "search_code"):
             query = args.get("query", "")
             return f'search "{query[:40]}"'
         arg_str = ", ".join(f"{k}={v!r}" for k, v in list(args.items())[:2])
-        return f"{name}({arg_str})"
+        return f"{name}({arg_str})" if arg_str else name
+
+    def _abstract_tool_error(self, error: str) -> str:
+        """Extract a clean, concise one-line summary of a tool error without spamming the screen."""
+        if not error:
+            return "unknown error"
+        line = error.strip().splitlines()[0].strip()
+        prefix = "Something went wrong, tool execution failed with error: "
+        if line.startswith(prefix):
+            line = line[len(prefix):].strip()
+        if line.startswith("ToolError: "):
+            line = line[len("ToolError: "):].strip()
+        line = line.replace("[Errno 22] Invalid argument", "invalid argument")
+        if len(line) > 60:
+            line = line[:57] + "..."
+        return line or "unknown error"
+
+    def _extract_concise_result(self, tool_name: str, result: str) -> str:
+        """Extract a concise summary from tool output for non-verbose display."""
+        if not result or result.strip() in ("", "None"):
+            return "completed"
+        trimmed = result.strip()
+        lines = trimmed.splitlines()
+
+        if len(lines) == 1 and len(trimmed) <= 45:
+            return trimmed
+
+        if tool_name in ("search", "search_code"):
+            for line in lines:
+                if "Found " in line and "matches" in line:
+                    return line.strip()
+                if "No matches found" in line:
+                    return "no matches"
+            return f"{len(lines)} results"
+
+        if tool_name == "bash":
+            for line in reversed(lines):
+                if any(k in line.lower() for k in ("passed", "failed", "error", "exit code")):
+                    if len(line.strip()) <= 45:
+                        return line.strip()
+            return f"completed ({len(lines)} lines)"
+
+        if tool_name in ("editor", "str_replace_editor"):
+            return "completed"
+
+        return "completed"
 
     def _render_tool_output(self, output: str) -> None:
         """Render a clean bounded preview of tool output."""

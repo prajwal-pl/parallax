@@ -21,7 +21,7 @@ def test_cli_version():
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
     assert "parallax" in result.stdout
-    assert "v0.1.2" in result.stdout
+    assert "v0.1.3" in result.stdout
 
 
 def test_cli_tools():
@@ -369,6 +369,102 @@ async def test_repl_run_async_prompt():
     output = console.export_text()
     assert "PARALLAX" in output
     assert "session ended" in output
+
+
+def test_onboarding_configure_both_providers(tmp_path, monkeypatch):
+    from parallax.cli.config import prompt_onboarding, get_config_file
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+    console = Console(record=True, theme=PARALLAX_THEME)
+    inputs = iter(["3", "gsk_testgroq123", "sk-or-testrouter456"])
+    monkeypatch.setattr(console, "input", lambda *args: next(inputs))
+
+    res = prompt_onboarding(console=console)
+    assert res is True
+    assert os.environ.get("GROQ_API_KEY") == "gsk_testgroq123"
+    assert os.environ.get("OPENROUTER_API_KEY") == "sk-or-testrouter456"
+
+    out = console.export_text()
+    assert "Both providers configured" in out
+
+
+def test_cli_config_and_key_commands(tmp_path, monkeypatch):
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_1234567890")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    # Test 'parallax config' (show status)
+    result_show = runner.invoke(app, ["config"])
+    assert result_show.exit_code == 0
+    assert "Groq" in result_show.stdout
+    assert "OpenRouter" in result_show.stdout
+    assert "gsk_" in result_show.stdout
+
+    # Test 'parallax config set groq <key>'
+    result_set = runner.invoke(app, ["config", "set", "groq", "gsk_newkey9999"])
+    assert result_set.exit_code == 0
+    assert "Groq API Key saved" in result_set.stdout
+    assert os.environ.get("GROQ_API_KEY") == "gsk_newkey9999"
+
+    # Test 'parallax key' alias
+    result_key = runner.invoke(app, ["key"])
+    assert result_key.exit_code == 0
+    assert "Groq" in result_key.stdout
+
+
+@pytest.mark.asyncio
+async def test_repl_key_command(tmp_path, monkeypatch):
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    agent = build_default_agent()
+    console = Console(record=True, theme=PARALLAX_THEME)
+    repl = InteractiveRepl(agent=agent, console=console)
+
+    # Test /key status display
+    with patch("sys.stdin.isatty", return_value=False):
+        await repl._handle_command("/key")
+    out = console.export_text()
+    assert "provider api keys" in out
+
+    # Test /key groq <key>
+    await repl._handle_command("/key groq gsk_livekey123")
+    assert os.environ.get("GROQ_API_KEY") == "gsk_livekey123"
+
+    # Test /key openrouter <key>
+    await repl._handle_command("/key openrouter sk-or-livekey456")
+    assert os.environ.get("OPENROUTER_API_KEY") == "sk-or-livekey456"
+
+
+def test_renderer_abstracted_output_and_errors():
+    console = Console(record=True, theme=PARALLAX_THEME)
+    renderer = CliRenderer(console=console, verbose=False)
+
+    # Test tool completion with large noisy output (should NOT dump lines in normal mode)
+    renderer.handle_event(AgentEvent(type=EventType.RUN_STARTED, data={"task": "list files"}))
+    renderer.handle_event(AgentEvent(type=EventType.TOOL_STARTED, data={"tool_call_id": "t1", "tool_name": "bash", "arguments": {"command": "ls /"}}))
+    renderer.handle_event(AgentEvent(type=EventType.TOOL_COMPLETED, data={"tool_call_id": "t1", "tool_name": "bash", "result": "\n".join([f"file_{i}" for i in range(500)])}))
+
+    output = console.export_text()
+    assert "bash" in output
+    assert "file_499" not in output  # Raw stdout suppressed in non-verbose mode
+
+    # Test tool failure with Errno 22 (abstracted clean 1-line error)
+    renderer.handle_event(AgentEvent(type=EventType.TOOL_STARTED, data={"tool_call_id": "t2", "tool_name": "search_code", "arguments": {"query": "test"}}))
+    renderer.handle_event(AgentEvent(type=EventType.TOOL_FAILED, data={
+        "tool_call_id": "t2",
+        "tool_name": "search_code",
+        "error": "Something went wrong, tool execution failed with error: [Errno 22] Invalid argument"
+    }))
+
+    output_failed = console.export_text()
+    assert "search_code" in output_failed
+    assert "invalid argument" in output_failed
+    assert "Something went wrong, tool execution failed" not in output_failed
 
 
 

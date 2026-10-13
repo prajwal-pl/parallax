@@ -56,8 +56,8 @@ class SearchTool:
         for file_path in sorted(files_to_search):
             try:
                 content = self.env.read_file(file_path)
-            except ToolError:
-                # Skip binary files or unreadable files
+            except (ToolError, OSError, Exception):
+                # Skip binary, permission-denied, or virtual device files
                 continue
 
             for line_num, line in enumerate(content.splitlines(), start=1):

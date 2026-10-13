@@ -26,12 +26,14 @@ from parallax.cli.console import get_console
 from parallax.cli.doctor import run_doctor
 from parallax.cli.renderer import CliRenderer
 from parallax.cli.repl import InteractiveRepl
-from parallax.cli.theme import PANEL_BOX
+from parallax.cli.theme import ICON_ERROR, ICON_SUCCESS, ICON_WARNING, PANEL_BOX
 
 from parallax.cli.config import (
+    get_provider_status,
     has_configured_keys,
     load_global_config,
     prompt_onboarding,
+    set_provider_key,
 )
 
 # Ensure environment variables are loaded (.env and ~/.parallax/config.json)
@@ -262,11 +264,127 @@ def tools_cmd():
     console.print()
 
 
+@app.command("config")
+def config_cmd(
+    action: Annotated[
+        Optional[str],
+        typer.Argument(help="Action: 'show'/'status', 'set', 'setup', or provider name ('groq', 'openrouter')."),
+    ] = None,
+    target: Annotated[
+        Optional[str],
+        typer.Argument(help="Provider name when using 'set', or API key when provider is first argument."),
+    ] = None,
+    key: Annotated[
+        Optional[str],
+        typer.Argument(help="API key string when using 'set <provider> <key>'."),
+    ] = None,
+):
+    """View or configure LLM provider API keys and runtime settings."""
+    console = get_console()
+
+    # Determine command invocation pattern
+    provider = None
+    api_key = None
+
+    if action in ("setup", "wizard", "init"):
+        prompt_onboarding(console=console)
+        return
+
+    if action == "set":
+        provider = target
+        api_key = key
+    elif action in ("groq", "openrouter", "or", "g"):
+        provider = action
+        api_key = target
+    elif action in (None, "show", "status", "list"):
+        # Display current status table
+        pass
+    else:
+        provider = action
+        api_key = target
+
+    if provider and api_key:
+        if set_provider_key(provider, api_key):
+            console.print(
+                f"\n  [status.success]{ICON_SUCCESS}[/status.success] "
+                f"[muted]{provider.capitalize()} API Key saved to[/muted] [tool.name]~/.parallax/config.json[/tool.name].\n"
+            )
+            return
+        else:
+            console.print(
+                f"\n  [status.error]{ICON_ERROR}[/status.error] "
+                f"[muted]Unknown provider '{provider}'. Choose 'groq' or 'openrouter'.[/muted]\n"
+            )
+            raise typer.Exit(code=1)
+
+    # Show configuration table
+    statuses = get_provider_status()
+    table = Table(
+        box=PANEL_BOX,
+        border_style="border",
+        show_header=True,
+        header_style="bold #818cf8",
+        padding=(0, 2),
+    )
+    table.add_column("Provider", style="tool.name")
+    table.add_column("Status", style="status.info")
+    table.add_column("Key", style="white")
+    table.add_column("Default Model", style="dim")
+    table.add_column("Description", style="muted")
+
+    for k, p in statuses.items():
+        status_txt = (
+            f"[status.success]{ICON_SUCCESS} configured[/status.success]"
+            if p["configured"]
+            else f"[status.warning]{ICON_WARNING} unset[/status.warning]"
+        )
+        table.add_row(
+            p["name"],
+            status_txt,
+            p["masked"],
+            p["default_model"],
+            p["description"],
+        )
+
+    console.print()
+    console.print(
+        Panel(
+            table,
+            title="[brand]parallax config[/brand] [muted]· inference providers[/muted]",
+            title_align="left",
+            box=PANEL_BOX,
+            border_style="#334155",
+            padding=(0, 1),
+        )
+    )
+    console.print("[dim #64748b]To set a key: parallax config set <groq|openrouter> <api-key>[/dim #64748b]")
+    console.print("[dim #64748b]To run the setup wizard: parallax config setup[/dim #64748b]\n")
+
+
+@app.command("key")
+def key_cmd(
+    provider: Annotated[
+        Optional[str],
+        typer.Argument(help="Provider name ('groq' or 'openrouter') or 'set'."),
+    ] = None,
+    target: Annotated[
+        Optional[str],
+        typer.Argument(help="API key or provider name."),
+    ] = None,
+    key: Annotated[
+        Optional[str],
+        typer.Argument(help="API key string if using 'parallax key set <prov> <key>'."),
+    ] = None,
+):
+    """Alias for 'parallax config' to manage API keys."""
+    config_cmd(action=provider, target=target, key=key)
+
+
 @app.command("version")
 def version_cmd():
     """Show Parallax version and runtime information."""
     console = get_console()
-    console.print("[brand]parallax[/brand] [muted]v0.1.2[/muted]")
+    console.print("[brand]parallax[/brand] [muted]v0.1.3[/muted]")
 
 
 def main():
