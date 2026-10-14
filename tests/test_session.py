@@ -8,7 +8,9 @@ from rich.console import Console
 from typer.testing import CliRunner
 
 from parallax.cli.app import app
+from parallax.cli.renderer import CliRenderer
 from parallax.cli.repl import InteractiveRepl, SlashCommandCompleter
+from parallax.cli.theme import PARALLAX_THEME
 from parallax.core.agent import Agent
 from parallax.core.session import Session, SessionStore
 from parallax.core.types import AgentEvent, EventType, Message, ToolCall, ToolFunction
@@ -534,5 +536,136 @@ def test_cli_session_delete_missing_target(tmp_path: Path, monkeypatch):
         res = runner.invoke(app, ["session", "delete"])
         assert res.exit_code == 1
         assert "Session ID required" in res.stdout
+
+
+def test_renderer_render_history_empty_and_system():
+    import io
+    output = io.StringIO()
+    console = Console(file=output, theme=PARALLAX_THEME, force_terminal=True, width=100)
+    renderer = CliRenderer(console=console)
+
+    # Empty list
+    renderer.render_history([])
+    assert output.getvalue() == ""
+
+    # System message only
+    renderer.render_history([Message(role="system", content="System instruction")])
+    assert output.getvalue() == ""
+
+
+def test_renderer_render_history_full_turn_replay():
+    import io
+    output = io.StringIO()
+    console = Console(file=output, theme=PARALLAX_THEME, force_terminal=True, width=100)
+    renderer = CliRenderer(console=console)
+
+    messages = [
+        Message(role="user", content="List all files"),
+        Message(
+            role="assistant",
+            content="",
+            tool_calls=[
+                ToolCall(id="tc_1", name="bash", arguments={"command": "ls -la"})
+            ],
+        ),
+        Message(role="tool", content="file1.py\nfile2.py", tool_call_id="tc_1"),
+        Message(role="assistant", content="Found two files in the workspace."),
+    ]
+    renderer.render_history(messages)
+    printed = output.getvalue()
+
+    assert "List all files" in printed
+    assert "bash" in printed
+    assert "ls -la" in printed
+    assert "Found two files in the workspace." in printed
+    assert "history restored" in printed
+
+
+def test_repl_resume_clears_screen_and_renders_history(tmp_path: Path):
+    import io
+    output = io.StringIO()
+    console = Console(file=output, theme=PARALLAX_THEME, force_terminal=True, width=100)
+    store = SessionStore(base_dir=tmp_path)
+
+    # Session 1 (active)
+    s1 = store.create_session(workspace="/code", model="llama-3.3")
+    s1.update([Message(role="user", content="Session 1 prompt")])
+    store.save_session(s1)
+
+    # Session 2 (target to resume)
+    s2 = store.create_session(workspace="/code", model="openai/gpt-oss-120b")
+    s2.update([
+        Message(role="user", content="How do I configure nginx?"),
+        Message(role="assistant", content="Here is the nginx configuration."),
+    ])
+    store.save_session(s2)
+
+    agent = Agent(model="llama-3.3", system_prompt="Test")
+    repl = InteractiveRepl(agent=agent, console=console, session=s1, session_store=store)
+
+    # Resume s2
+    with patch.object(console, "clear") as mock_clear:
+        repl._resume_session(s2.id)
+        mock_clear.assert_called_once()
+
+    assert repl.session.id == s2.id
+    assert repl.agent.model == "openai/gpt-oss-120b"
+    assert len(repl.messages) == 2
+    printed = output.getvalue()
+    assert "How do I configure nginx?" in printed
+    assert "Here is the nginx configuration." in printed
+    assert "history restored" in printed
+
+
+def test_repl_new_session_clears_screen_and_resets(tmp_path: Path):
+    import io
+    output = io.StringIO()
+    console = Console(file=output, theme=PARALLAX_THEME, force_terminal=True, width=100)
+    store = SessionStore(base_dir=tmp_path)
+
+    agent = Agent(model="llama-3.3", system_prompt="Test")
+    repl = InteractiveRepl(agent=agent, console=console, session_store=store)
+    repl.messages = [Message(role="user", content="Work in progress")]
+    old_id = repl.session.id
+
+    with patch.object(console, "clear") as mock_clear:
+        repl._new_session()
+        mock_clear.assert_called_once()
+
+    assert repl.session.id != old_id
+    assert repl.messages == []
+    # Verify old session was saved to store
+    saved_old = store.get_session(old_id)
+    assert saved_old is not None
+    assert len(saved_old.messages) == 1
+    assert saved_old.messages[0].content == "Work in progress"
+
+
+@pytest.mark.asyncio
+async def test_repl_run_renders_history_on_startup(tmp_path: Path):
+    import io
+    output = io.StringIO()
+    console = Console(file=output, theme=PARALLAX_THEME, force_terminal=True, width=100)
+    store = SessionStore(base_dir=tmp_path)
+
+    s = store.create_session(workspace="/code", model="llama-3.3")
+    s.update([
+        Message(role="user", content="Build the frontend application"),
+        Message(role="assistant", content="Running npm build now."),
+    ])
+    store.save_session(s)
+
+    agent = Agent(model="llama-3.3", system_prompt="Test")
+    repl = InteractiveRepl(agent=agent, console=console, session=s, session_store=store)
+
+    mock_prompt_session = MagicMock()
+    mock_prompt_session.prompt_async = AsyncMock(side_effect=EOFError)
+    with patch.object(repl, "_get_prompt_session", return_value=mock_prompt_session):
+        await repl.run()
+
+    printed = output.getvalue()
+    assert "Build the frontend application" in printed
+    assert "Running npm build now." in printed
+    assert "history restored" in printed
 
 

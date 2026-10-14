@@ -18,10 +18,11 @@ from parallax.cli.theme import (
     ICON_ERROR,
     ICON_LINE_V,
     ICON_SUCCESS,
+    ICON_USER,
     PANEL_BOX,
 )
 from parallax.core.llm import extract_retry_delay
-from parallax.core.types import AgentEvent, EventType
+from parallax.core.types import AgentEvent, EventType, Message
 
 
 class CliRenderer:
@@ -449,3 +450,66 @@ class CliRenderer:
                 self.console.print(f"    [muted]{ICON_LINE_V}[/muted] [diff.remove]{line}[/diff.remove]")
             else:
                 self.console.print(f"    [muted]{ICON_LINE_V}[/muted] [muted]{line}[/muted]")
+
+    def render_history(self, messages: list[Message]) -> None:
+        """
+        Replay past conversation messages visually on the terminal.
+        Renders user turns, compact tool receipts, and assistant responses.
+        """
+        if not messages:
+            return
+
+        rendered_any = False
+        for msg in messages:
+            if msg.role == "system":
+                continue
+
+            if msg.role == "user":
+                self.console.print()
+                user_line = Text()
+                user_line.append(f"{ICON_USER} ", style="brand")
+                user_line.append(msg.content, style="bold white")
+                self.console.print(user_line)
+                rendered_any = True
+
+            elif msg.role == "assistant":
+                if msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        receipt = Text()
+                        receipt.append(f"  {ICON_SUCCESS} ", style="status.success")
+                        receipt.append(tc.name, style="tool.name")
+                        if tc.arguments:
+                            arg_hint = ""
+                            for k in ("path", "command", "query", "url", "target"):
+                                if k in tc.arguments:
+                                    arg_hint = str(tc.arguments[k])
+                                    break
+                            if not arg_hint:
+                                first_val = next(iter(tc.arguments.values()), None)
+                                if first_val and isinstance(first_val, (str, int, float)):
+                                    arg_hint = str(first_val)
+                            if arg_hint:
+                                if len(arg_hint) > 40:
+                                    arg_hint = arg_hint[:37] + "..."
+                                receipt.append(f" [muted]· {arg_hint}[/muted]", style="muted")
+                        self.console.print(receipt)
+                    rendered_any = True
+
+                if msg.content:
+                    self.console.print()
+                    role_header = Text()
+                    role_header.append(f"{ICON_AGENT} ", style="brand")
+                    role_header.append("parallax", style="brand")
+                    self.console.print(role_header)
+                    self.console.print()
+                    self.console.print(Markdown(msg.content))
+                    self.console.print()
+                    rendered_any = True
+
+            elif msg.role == "tool":
+                # Intermediate raw tool execution results are abstracted via tool receipts above
+                pass
+
+        if rendered_any:
+            self.console.rule("[dim #64748b]history restored[/dim #64748b]", style="border")
+            self.console.print()

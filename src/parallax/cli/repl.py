@@ -317,6 +317,8 @@ class InteractiveRepl:
                 f"[muted]resumed session[/muted] [tool.name]{self.session.id}[/tool.name] "
                 f"[dim]({len(self.messages)} messages loaded · {self.session.title})[/dim]\n"
             )
+            renderer = CliRenderer(console=self.console, verbose=self.verbose, is_interactive=True)
+            renderer.render_history(self.messages)
 
         # Warm the dynamic model cache in the background
         self._prefetch_task = asyncio.create_task(self._prefetch_models())
@@ -689,14 +691,27 @@ class InteractiveRepl:
             except Exception:
                 pass
 
+        # Erase existing session messages visually and reset terminal buffer
+        self.console.clear()
+        print_hero(
+            model=self.agent.model,
+            workspace=self.agent.workspace,
+            session_id=self.session.id,
+            console=self.console,
+        )
+
         self.console.print(
-            f"[status.success]{ICON_SUCCESS}[/status.success] "
+            f"  [status.success]{ICON_SUCCESS}[/status.success] "
             f"[muted]resumed session[/muted] [tool.name]{self.session.id}[/tool.name] "
             f"[dim]({len(self.messages)} messages · {self.session.turn_count} turns · model: {self.session.model})[/dim]"
         )
         if self.session.title:
             self.console.print(f"  [muted]Title:[/muted] [white]{self.session.title}[/white]")
         self.console.print()
+
+        # Render all past messages from the resumed session
+        renderer = CliRenderer(console=self.console, verbose=self.verbose, is_interactive=True)
+        renderer.render_history(self.messages)
 
     def _new_session(self) -> None:
         """Save current session and start a new clean session."""
@@ -709,8 +724,16 @@ class InteractiveRepl:
             model=self.agent.model,
         )
         self.messages = []
+
+        self.console.clear()
+        print_hero(
+            model=self.agent.model,
+            workspace=self.agent.workspace,
+            session_id=self.session.id,
+            console=self.console,
+        )
         self.console.print(
-            f"[status.success]{ICON_SUCCESS}[/status.success] "
+            f"  [status.success]{ICON_SUCCESS}[/status.success] "
             f"[muted]started new session[/muted] [tool.name]{self.session.id}[/tool.name]\n"
         )
 
