@@ -333,15 +333,15 @@ def sessions_cmd(
     table = Table(
         box=None,
         show_header=True,
-        header_style="bold #818cf8",
+        header_style="bold #e4e4e7",
         expand=True,
         padding=(0, 1),
     )
     table.add_column("Session ID", style="brand", no_wrap=True)
     table.add_column("Title", style="white", ratio=2)
     table.add_column("Model", style="tool.name", ratio=1)
-    table.add_column("Turns", style="dim #94a3b8", width=6, justify="right")
-    table.add_column("Updated", style="dim #64748b", no_wrap=True)
+    table.add_column("Turns", style="dim #71717a", width=6, justify="right")
+    table.add_column("Updated", style="dim #71717a", no_wrap=True)
 
     for s in sessions:
         title_text = s.title if len(s.title) <= 36 else s.title[:33] + "..."
@@ -454,8 +454,8 @@ def tools_cmd():
     console = get_console()
 
     pills = Text()
-    pills.append(" Tools ", style="bold white on #4f46e5")
-    pills.append(f"  {len(agent.tool_schemas)} active runtime tools  ", style="bold #93c5fd on #1e293b")
+    pills.append(" Tools ", style="bold #f4f4f5 on #27272a")
+    pills.append(f"  {len(agent.tool_schemas)} active runtime tools  ", style="bold #e4e4e7 on #18181b")
     console.print()
     console.print(pills)
     console.print()
@@ -468,10 +468,10 @@ def tools_cmd():
 
         content = Text()
         content.append(f"{desc}\n\n", style="muted")
-        content.append("Parameters: ", style="bold #94a3b8")
+        content.append("Parameters: ", style="bold #a1a1aa")
         if params:
             for param_name in params.keys():
-                content.append(f" {param_name} ", style="bold #93c5fd on #1e293b")
+                content.append(f" {param_name} ", style="bold #f4f4f5 on #27272a")
                 content.append(" ")
         else:
             content.append("none", style="dim")
@@ -479,10 +479,10 @@ def tools_cmd():
 
         panel = Panel(
             content,
-            title=f"[bold #818cf8]{name}[/bold #818cf8]",
+            title=f"[bold #e4e4e7]{name}[/bold #e4e4e7]",
             title_align="left",
             box=PANEL_BOX,
-            border_style="#334155",
+            border_style="#3f3f46",
             padding=(0, 2),
         )
         console.print(panel)
@@ -548,7 +548,7 @@ def config_cmd(
         box=PANEL_BOX,
         border_style="border",
         show_header=True,
-        header_style="bold #818cf8",
+        header_style="bold #e4e4e7",
         padding=(0, 2),
     )
     table.add_column("Provider", style="tool.name")

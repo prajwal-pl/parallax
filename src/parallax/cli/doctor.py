@@ -33,7 +33,7 @@ def run_doctor(console: Console | None = None) -> bool:
         box=PANEL_BOX,
         border_style="border",
         show_header=True,
-        header_style="bold #818cf8",
+        header_style="bold #e4e4e7",
         padding=(0, 1),
     )
     table.add_column("check", style="tool.name", no_wrap=True)

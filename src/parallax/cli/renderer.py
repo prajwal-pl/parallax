@@ -59,7 +59,7 @@ class CliRenderer:
             self._active_status = self.console.status(
                 status_text,
                 spinner="dots",
-                spinner_style="#818cf8",
+                spinner_style="#a1a1aa",
             )
             self._active_status.start()
         else:

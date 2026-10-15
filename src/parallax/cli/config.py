@@ -158,18 +158,18 @@ def prompt_onboarding(console: Console | None = None) -> bool:
         return False
 
     intro = Text()
-    intro.append("Welcome to Parallax!\n\n", style="bold #818cf8")
+    intro.append("Welcome to Parallax!\n\n", style="bold #f4f4f5")
     intro.append(
         "Parallax is a model-agnostic AI coding agent runtime.\n"
         "To start reasoning and generating code, Parallax needs an API key to connect to an LLM provider.\n\n",
         style="white",
     )
-    intro.append("Choose an inference provider setup:\n", style="bold #94a3b8")
-    intro.append("  [1] Groq ", style="bold #34d399")
+    intro.append("Choose an inference provider setup:\n", style="bold #a1a1aa")
+    intro.append("  [1] Groq ", style="bold #22c55e")
     intro.append("(Recommended · Ultra-fast & Free tier available at https://console.groq.com)\n", style="muted")
-    intro.append("  [2] OpenRouter ", style="bold #38bdf8")
+    intro.append("  [2] OpenRouter ", style="bold #e4e4e7")
     intro.append("(200+ models from OpenAI, Anthropic, Meta at https://openrouter.ai)\n", style="muted")
-    intro.append("  [3] Both Groq & OpenRouter ", style="bold #a78bfa")
+    intro.append("  [3] Both Groq & OpenRouter ", style="bold #f4f4f5")
     intro.append("(Configure both providers for maximum model selection)\n", style="muted")
     intro.append("  [4] Skip for now ", style="dim")
     intro.append("(You can configure keys later via /key or .env)\n", style="muted")
@@ -179,7 +179,7 @@ def prompt_onboarding(console: Console | None = None) -> bool:
         title="[brand]parallax setup[/brand] [muted]· first-run configuration[/muted]",
         title_align="left",
         box=PANEL_BOX,
-        border_style="#334155",
+        border_style="#3f3f46",
         padding=(1, 2),
     )
     console.print()

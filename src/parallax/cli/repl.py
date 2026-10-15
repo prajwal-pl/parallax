@@ -236,14 +236,14 @@ class SlashCommandCompleter(Completer):
 # Parallax theme styling for prompt_toolkit completion popup
 _PT_STYLE = Style.from_dict(
     {
-        "prompt": "#38bdf8 bold",
-        "completion-menu": "bg:#0f172a #94a3b8",
-        "completion-menu.completion": "bg:#1e293b #e2e8f0",
-        "completion-menu.completion.current": "bg:#4f46e5 #ffffff bold",
-        "completion-menu.meta": "bg:#0f172a #64748b",
-        "completion-menu.meta.current": "bg:#4f46e5 #c7d2fe italic",
-        "scrollbar.background": "bg:#0f172a",
-        "scrollbar.button": "bg:#334155",
+        "prompt": "#e4e4e7 bold",
+        "completion-menu": "bg:#18181b #a1a1aa",
+        "completion-menu.completion": "bg:#27272a #f4f4f5",
+        "completion-menu.completion.current": "bg:#3f3f46 #ffffff bold",
+        "completion-menu.meta": "bg:#18181b #71717a",
+        "completion-menu.meta.current": "bg:#3f3f46 #d4d4d8 italic",
+        "scrollbar.background": "bg:#18181b",
+        "scrollbar.button": "bg:#3f3f46",
     }
 )
 
@@ -514,7 +514,7 @@ class InteractiveRepl:
             table = Table(
                 box=None,
                 show_header=True,
-                header_style="bold #818cf8",
+                header_style="bold #e4e4e7",
                 expand=True,
                 padding=(0, 2),
             )
@@ -612,19 +612,19 @@ class InteractiveRepl:
         table = Table(
             box=None,
             show_header=True,
-            header_style="bold #818cf8",
+            header_style="bold #e4e4e7",
             expand=True,
             padding=(0, 1),
         )
         table.add_column("Session ID", style="brand", no_wrap=True)
         table.add_column("Title", style="white", ratio=2)
         table.add_column("Model", style="tool.name", ratio=1)
-        table.add_column("Turns", style="dim #94a3b8", width=6, justify="right")
-        table.add_column("Updated", style="dim #64748b", no_wrap=True)
+        table.add_column("Turns", style="dim #71717a", width=6, justify="right")
+        table.add_column("Updated", style="dim #71717a", no_wrap=True)
 
         for s in sessions:
             is_active = (s.id == self.session.id)
-            id_text = f"[bold #38bdf8]● {s.id}[/bold #38bdf8]" if is_active else f"  {s.id}"
+            id_text = f"[bold #22c55e]●[/bold #22c55e] [bold white]{s.id}[/bold white]" if is_active else f"  {s.id}"
             title_text = s.title if len(s.title) <= 36 else s.title[:33] + "..."
             updated_text = s.updated_at[:16].replace("T", " ")
             table.add_row(
@@ -638,15 +638,15 @@ class InteractiveRepl:
         panel = Panel(
             table,
             box=PANEL_BOX,
-            border_style="#334155",
+            border_style="#3f3f46",
             padding=(0, 1),
-            title="[brand]parallax[/brand] [dim #64748b]· conversation sessions[/dim #64748b]",
+            title="[bold #e4e4e7]parallax[/bold #e4e4e7] [dim #71717a]· conversation sessions[/dim #71717a]",
             title_align="left",
         )
         self.console.print()
         self.console.print(panel)
         self.console.print(
-            "[dim #64748b]● active · Switch/resume: /resume <id> (or prefix) · Fresh: /new[/dim #64748b]\n"
+            "[dim #71717a]● active · Switch/resume: /resume <id> (or prefix) · Fresh: /new[/dim #71717a]\n"
         )
 
     def _resume_session(self, target_id: str) -> None:
@@ -741,13 +741,13 @@ class InteractiveRepl:
         table = Table(
             box=None,
             show_header=True,
-            header_style="bold #818cf8",
+            header_style="bold #e4e4e7",
             expand=True,
             padding=(0, 2),
         )
         table.add_column("Command", style="brand", width=18)
         table.add_column("Description", style="white")
-        table.add_column("Aliases", style="dim #94a3b8", width=12)
+        table.add_column("Aliases", style="dim #71717a", width=12)
 
         table.add_row("/help [topic]", "Show interactive guide and command help", "/h, ?")
         table.add_row("/model [name]", "View or switch active LLM provider model", "/m")
@@ -767,13 +767,13 @@ class InteractiveRepl:
         table = Table(
             box=None,
             show_header=True,
-            header_style="bold #818cf8",
+            header_style="bold #e4e4e7",
             expand=True,
             padding=(0, 2),
         )
         table.add_column("Shortcut", style="brand", width=18)
         table.add_column("Action", style="white")
-        table.add_column("Context", style="dim #94a3b8", width=14)
+        table.add_column("Context", style="dim #71717a", width=14)
 
         table.add_row("/", "Trigger interactive command suggestions", "Input prompt")
         table.add_row("Up / Down", "Navigate command suggestions or history", "Input prompt")
@@ -790,41 +790,41 @@ class InteractiveRepl:
             panel = Panel(
                 self._create_commands_table(),
                 box=PANEL_BOX,
-                border_style="#334155",
+                border_style="#3f3f46",
                 padding=(0, 1),
-                title="[brand]parallax[/brand] [dim #64748b]· command reference[/dim #64748b]",
+                title="[brand]parallax[/brand] [dim #71717a]· command reference[/dim #71717a]",
                 title_align="left",
             )
             self.console.print()
             self.console.print(panel)
-            self.console.print("[dim #64748b]Type /help shortcuts for keyboard bindings or /help for full guide[/dim #64748b]\n")
+            self.console.print("[dim #71717a]Type /help shortcuts for keyboard bindings or /help for full guide[/dim #71717a]\n")
 
         elif norm_topic in ("shortcuts", "shortcut", "keys", "key", "s"):
             panel = Panel(
                 self._create_shortcuts_table(),
                 box=PANEL_BOX,
-                border_style="#334155",
+                border_style="#3f3f46",
                 padding=(0, 1),
-                title="[brand]parallax[/brand] [dim #64748b]· keyboard shortcuts[/dim #64748b]",
+                title="[brand]parallax[/brand] [dim #71717a]· keyboard shortcuts[/dim #71717a]",
                 title_align="left",
             )
             self.console.print()
             self.console.print(panel)
-            self.console.print("[dim #64748b]Type /help commands for slash commands or /help for full guide[/dim #64748b]\n")
+            self.console.print("[dim #71717a]Type /help commands for slash commands or /help for full guide[/dim #71717a]\n")
 
         elif not norm_topic or norm_topic in ("all", "guide"):
             grid = Table.grid(padding=(1, 0))
             grid.add_column()
-            grid.add_row(Text("Commands", style="bold #818cf8"))
+            grid.add_row(Text("Commands", style="bold #f4f4f5"))
             grid.add_row(self._create_commands_table())
-            grid.add_row(Text("Keyboard Shortcuts", style="bold #818cf8"))
+            grid.add_row(Text("Keyboard Shortcuts", style="bold #f4f4f5"))
             grid.add_row(self._create_shortcuts_table())
-            grid.add_row(Text("Tip: Filter help with /help commands or /help shortcuts", style="dim #64748b"))
+            grid.add_row(Text("Tip: Filter help with /help commands or /help shortcuts", style="dim #71717a"))
 
             panel = Panel(
                 grid,
                 box=PANEL_BOX,
-                border_style="#334155",
+                border_style="#3f3f46",
                 padding=(0, 1),
                 title="[brand]parallax guide[/brand]",
                 title_align="left",
@@ -878,8 +878,8 @@ class InteractiveRepl:
         """Render active tools in styled cards with parameter highlights."""
         self.console.print()
         self.console.print(
-            f"[bold #818cf8]Active Runtime Tools[/bold #818cf8] "
-            f"[dim #64748b]({len(self.agent.tool_schemas)} tools available)[/dim #64748b]\n"
+            f"[bold #e4e4e7]Active Runtime Tools[/bold #e4e4e7] "
+            f"[dim #71717a]({len(self.agent.tool_schemas)} tools available)[/dim #71717a]\n"
         )
 
         for schema in self.agent.tool_schemas:
@@ -890,10 +890,10 @@ class InteractiveRepl:
 
             content = Text()
             content.append(f"{desc}\n\n", style="muted")
-            content.append("Parameters: ", style="bold #94a3b8")
+            content.append("Parameters: ", style="bold #a1a1aa")
             if params:
                 for param_name in params.keys():
-                    content.append(f" {param_name} ", style="bold #93c5fd on #1e293b")
+                    content.append(f" {param_name} ", style="bold #f4f4f5 on #27272a")
                     content.append(" ")
             else:
                 content.append("none", style="dim")
@@ -901,10 +901,10 @@ class InteractiveRepl:
 
             panel = Panel(
                 content,
-                title=f"[bold #818cf8]{name}[/bold #818cf8]",
+                title=f"[bold #e4e4e7]{name}[/bold #e4e4e7]",
                 title_align="left",
                 box=PANEL_BOX,
-                border_style="#334155",
+                border_style="#3f3f46",
                 padding=(0, 2),
             )
             self.console.print(panel)
@@ -988,11 +988,11 @@ class InteractiveRepl:
             )
             groq_sample = [m.id for m in sorted_options if m.provider == "Groq"][:5]
             or_sample = [m.id for m in sorted_options if m.provider == "OpenRouter"][:5]
-            self.console.print("[bold #818cf8]Groq models:[/bold #818cf8]")
+            self.console.print("[bold #e4e4e7]Groq models:[/bold #e4e4e7]")
             for m in groq_sample:
                 marker = f"  {ICON_USER} " if m == self.agent.model else "    "
                 self.console.print(f"{marker}[tool.name]{m}[/tool.name]")
-            self.console.print("\n[bold #818cf8]OpenRouter models:[/bold #818cf8]")
+            self.console.print("\n[bold #e4e4e7]OpenRouter models:[/bold #e4e4e7]")
             for m in or_sample:
                 marker = f"  {ICON_USER} " if m == self.agent.model else "    "
                 self.console.print(f"{marker}[tool.name]{m}[/tool.name]")
@@ -1164,19 +1164,19 @@ class InteractiveRepl:
         layout = Layout(HSplit([window]))
 
         style = Style.from_dict({
-            "header": "#818cf8 bold",
-            "tab_lbl": "#94a3b8 bold",
-            "tab_active": "#38bdf8 bold bg:#1e293b",
-            "tab_inactive": "#64748b",
-            "filter_lbl": "#94a3b8 bold",
-            "filter_val": "#38bdf8 bold",
-            "pointer": "#38bdf8 bold",
+            "header": "#e4e4e7 bold",
+            "tab_lbl": "#a1a1aa bold",
+            "tab_active": "#ffffff bold bg:#27272a",
+            "tab_inactive": "#71717a",
+            "filter_lbl": "#a1a1aa bold",
+            "filter_val": "#f4f4f5 bold",
+            "pointer": "#f4f4f5 bold",
             "pointer_inactive": "",
-            "selected": "#ffffff bold bg:#1e293b",
-            "unselected": "#94a3b8",
-            "provider_tag": "#64748b",
-            "hint_subtle": "#475569 italic",
-            "hint": "#64748b italic",
+            "selected": "#ffffff bold bg:#27272a",
+            "unselected": "#a1a1aa",
+            "provider_tag": "#71717a",
+            "hint_subtle": "#52525b italic",
+            "hint": "#71717a italic",
         })
 
         app = Application(

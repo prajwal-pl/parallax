@@ -25,28 +25,28 @@ PANEL_BOX: Box = ROUNDED
 PARALLAX_THEME = Theme(
     {
         # Brand & Roles
-        "brand": "bold #818cf8",
-        "brand.dim": "#6366f1",
-        "user": "bold #38bdf8",
+        "brand": "bold #e4e4e7",
+        "brand.dim": "#a1a1aa",
+        "user": "bold #f4f4f5",
         # Status indicators
-        "status.success": "#34d399",
-        "status.error": "#f87171",
-        "status.warning": "#fbbf24",
-        "status.info": "#38bdf8",
+        "status.success": "#22c55e",
+        "status.error": "#ef4444",
+        "status.warning": "#f59e0b",
+        "status.info": "#a1a1aa",
         # Structural & Metadata
-        "muted": "#64748b",
-        "border": "#334155",
-        "border.subtle": "#1e293b",
-        "meta": "dim #94a3b8",
-        "timestamp": "dim #64748b",
+        "muted": "#71717a",
+        "border": "#3f3f46",
+        "border.subtle": "#27272a",
+        "meta": "dim #a1a1aa",
+        "timestamp": "dim #71717a",
         # Tool execution
-        "tool.name": "bold #e2e8f0",
-        "tool.arg": "#94a3b8",
-        "tool.bash": "#a7f3d0",
-        "tool.editor": "#fed7aa",
-        "tool.search": "#bae6fd",
+        "tool.name": "bold #f4f4f5",
+        "tool.arg": "#a1a1aa",
+        "tool.bash": "#d4d4d8",
+        "tool.editor": "#d4d4d8",
+        "tool.search": "#d4d4d8",
         # Output highlights
-        "diff.add": "#34d399",
-        "diff.remove": "#f87171",
+        "diff.add": "#22c55e",
+        "diff.remove": "#ef4444",
     }
 )
