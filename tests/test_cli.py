@@ -21,7 +21,7 @@ def test_cli_version():
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
     assert "parallax" in result.stdout
-    assert "v0.1.4" in result.stdout
+    assert "v0.1.5" in result.stdout
 
 
 def test_cli_tools():

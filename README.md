@@ -2168,7 +2168,7 @@ The LLM is one component of the system.
 
 ## Status
 
-⚡ **Core Runtime & CLI Operational (v0.1.4 Released on PyPI)**
+⚡ **Core Runtime & CLI Operational (v0.1.5 Released on PyPI)**
 
 The core headless runtime and flagship terminal CLI are fully implemented, thoroughly tested, and packaged:
 

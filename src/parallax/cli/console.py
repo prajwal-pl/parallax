@@ -75,7 +75,7 @@ def print_hero(
     model: str,
     workspace: str | Path | None = None,
     session_id: str | None = None,
-    version: str = "0.1.4",
+    version: str = "0.1.5",
     console: Console | None = None,
 ) -> None:
     """Render the flagship Parallax landing card with minimalist titanium styling."""
